@@ -7,6 +7,7 @@ void setup() {
   // TODO: Verify driver, safe electrical defaults and board wiring before
   // implementing any motor- or battery-related I/O.
 }
+//setup 
 
 void loop() {
   // TODO: Replace placeholders with bounded, nonblocking BLE input and a
