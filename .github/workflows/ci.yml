@@ -18,4 +18,5 @@ jobs:
       - run: |
           arduino-cli core update-index
           arduino-cli core install arduino:mbed_nano@4.4.1
+          arduino-cli lib install ArduinoBLE@1.4.1
       - run: bash scripts/compile-firmware.sh

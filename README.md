@@ -1,15 +1,20 @@
 # MECH 368 mobile robot starter
 
-Local starter for two Arduino Nano 33 BLE Sense Rev2 boards: one on the robot,
-one in the handheld remote. The only working project logic here is a pure C++
-motion-permission state machine. Both sketches are compile-only scaffolds:
-they have no pin assignments, sensor reads, BLE traffic, or motor outputs.
+Development scaffold for two Arduino Nano 33 BLE Sense Rev2 boards: one on the
+robot, one in the handheld remote. Phase 1 adds BLE command/status transport,
+portable packet validation and integration with the existing motion-permission
+state machine. Remote traffic is zero-speed heartbeat or a serial-triggered
+E-stop. All actual motor outputs remain absent/disabled; no driver pins assumed.
 This is not a working robot, a demonstrated safety system, or a submission-ready project.
+
+See [BLE protocol and bench checklist](docs/BLE_PROTOCOL.md) for the exact wire
+format, timing, setup API blocking limitations and unperformed hardware tests.
 
 | Path | Purpose |
 | --- | --- |
 | `firmware/robot/` | Robot sketch; integration point for BLE, local recovery, and motor gating |
 | `firmware/remote/` | Remote sketch; integration point for pose estimation, BLE, and the E-stop request |
+| `libraries/Mech368BLE/` | Portable packet codec, receiver and remote ACK tracking |
 | `libraries/Mech368Safety/` | Portable state machine shared with the host test |
 | `tests/` | Deterministic host assertions for watchdog and E-stop behavior |
 | `.github/workflows/ci.yml` | Independent host-test and board-compile jobs; no uploads to boards |
@@ -24,6 +29,7 @@ bash scripts/test-host.sh
 # Requires Arduino CLI 1.3.1 on PATH (same toolchain CI uses).
 arduino-cli core update-index
 arduino-cli core install arduino:mbed_nano@4.4.1
+arduino-cli lib install ArduinoBLE@1.4.1
 bash scripts/compile-firmware.sh
 ```
 
@@ -34,8 +40,8 @@ identifies the Mbed OS Nano package. The build target is `arduino:mbed_nano:nano
 ## Implement and verify on the bench
 
 1. **BLE and pose steering.** Verify the two actual boards and confirm which
-   endpoint advertises. Implement bounded, nonblocking BLE processing. Map
-   calibrated remote roll and pitch to linear and angular velocity. Define
+   endpoint advertises. Measure BLE processing latency, including synchronous setup calls. Map
+   calibrated remote roll and pitch to linear and angular velocity. Review the implemented
    command units, bounds, packet format and sequence/session handling. Validate
    type, size, version, bounds, and freshness before refreshing the watchdog;
    cached, malformed, duplicated or stale packets must not extend it. Treat
