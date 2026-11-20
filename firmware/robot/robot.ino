@@ -8,7 +8,7 @@ void setup() {
   // implementing any motor- or battery-related I/O.
 }
 //setup 
-
+//test test
 void loop() {
   // TODO: Replace placeholders with bounded, nonblocking BLE input and a
   // local APDS-9960 gesture event. Never pass cached packets as new commands.
