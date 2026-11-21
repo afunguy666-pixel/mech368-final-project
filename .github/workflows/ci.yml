@@ -8,6 +8,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: bash scripts/test-host.sh
+      - run: bash scripts/run-sil.sh
   firmware-compile:
     runs-on: ubuntu-24.04
     steps:

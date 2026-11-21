@@ -70,3 +70,64 @@ identifies the Mbed OS Nano package. The build target is `arduino:mbed_nano:nano
    against the course handout. Start motor tests with wheels clear of the
    bench and a safe independent means to cut power. Log measurements and
    observed behavior rather than treating compilation as acceptance.
+
+## Software-in-the-loop (SIL) simulator
+
+Run the host tests and generate five CSV traces without an Arduino, BLE hardware,
+Python, or network access:
+
+```sh
+bash scripts/run-sil.sh
+```
+
+The traces go to `build/sil/`; pass a directory as the first argument to change
+the destination. Use `CXX` to select a C++11 compiler. Run from Bash (for example,
+Git Bash or WSL on Windows with a compiler on PATH). The CI host job also runs
+this command; the existing firmware compilation remains independent.
+
+Optional, with Python and matplotlib available, generate `tracking.png` and
+`watchdog.png` from the CSV directory:
+
+```sh
+python sim/plot.py build/sil
+```
+
+
+The simulator advances a **virtual clock in 10 ms steps**, without sleeping.
+A scripted remote generates commands every 50 ms. It passes correctly encoded
+frames through an in-process queue with a fixed 20 ms delivery delay and a
+scripted drop interval. The real portable `Receiver` and its `MotionSafety`
+instance gate command values before the kinematic model consumes them.
+Challenge/status is sampled instantly by the scripted remote; the simulator
+does not emulate the actual BLE stack, timings, link budget, or remote firmware.
+
+| CSV | What the test checks |
+| --- | --- |
+| `straight.csv` | Ideal straight motion: 0.50 m in 2 s after first accepted command; both estimators agree to within encoder resolution. |
+| `turn90.csv` | One second straight (0.25 m), then a one-second pivot at 1.571 rad/s: near 90° without further translation. |
+| `sensor_error.csv` | Straight/pivot/straight with fixed seed 368, opposite 2% wheel scale biases, bounded encoder/gyro noise, and fixed gyro bias. The test checks repeatability and nonzero finite error rather than assuming fusion wins. |
+| `watchdog.csv` | While still virtually connected, commands go to zero at 970 ms (520 ms last accepted + 450 ms). A fresh frame restores control at 1070 ms. Explicit disconnect at 1300 ms zeros commands immediately; reconnect at 1450 ms remains blocked until a fresh frame at 1470 ms. |
+| `estop.csv` | E-stop at 320 ms sets both wheel commands to zero and survives disconnect/reconnect. A synthetic **local** gesture at 900 ms clears the latch but leaves commands zero until the fresh frame at 920 ms. |
+
+Each row records the receiver state, the gated chassis command (mm/s and
+mrad/s), wheel commands (rad/s), and three XY/yaw poses (m and rad). Poses are
+at the timestamp before applying its command to the next 10 ms interval; yaw
+is unwrapped. Event labels mark packet delivery/drop, watchdog expiry,
+disconnect, reconnect, E-stop, and local recovery.
+
+The virtual geometry is a 0.10 m track width and 0.020 m wheel radius, with 1024
+counts per wheel revolution. These and the noise/bias parameters are grouped in
+`sil::Config` (`sim/Simulation.h`) and can be supplied to `sil::run`. Default CSVs
+use the in-code defaults. Encoder deltas come from successive rounded cumulative
+counts so small increments are not repeatedly rounded away. Ground
+truth is ideal differential-drive motion without slip, inertia, or braking
+dynamics. Both estimators use the same observed wheel increments for distance;
+encoder-only yaw comes from their difference, while fused yaw increments are a
+fixed 10% encoder / 90% gyro blend. The weights and biases are illustrative,
+not calibrated. A lower error here does not establish performance on the
+actual robot or guarantee the blend helps under other conditions.
+
+SIL validates the gating and model under the given scripts, not hardware
+stopping behavior. Still verify the actual BLE exchange, loop and driver
+latency, E-stop/re-arm I/O, encoder scaling, gyro calibration, and mechanical
+behavior on a bench before applying motor power for a loaded test.
