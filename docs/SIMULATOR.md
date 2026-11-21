@@ -121,47 +121,28 @@ motors with encoder speed control, follows the line, stops for obstacles,
 starts and stops on gestures, and lights the red LED on low battery. It shows
 how the vehicle file's pins reach ordinary Arduino code.
 
-## Current findings on the Phase 1 firmware (2026-11-21)
+## Findings on the Phase 1 firmware (2026-11-21)
 
-Results from `bash scripts/run-fw-sim.sh --seeds 10` on the unmodified
-sketches:
-
-- **Watchdog, E-stop latch, corruption and power-loss handling behave as
-  specified.** In every run, every status reporting "motion permitted" was
+- **Watchdog, E-stop latch, corruption and power-loss handling behaved as
+  specified** in every seed: each status reporting "motion permitted" was
   within 450 ms of a delivered motion command, no corrupted frame extended
   the watchdog, and the E-stop latch survived link loss and reconnect.
-- **The remote drops a healthy link intermittently (all 10 seeds of
-  `link_stability`, 60 s on a perfect radio).** The remote sends commands on
-  its own free-running 50 ms timer, and the robot sends status on another.
-  When the two timers' phases line up badly, each command carries the
-  challenge from the status *before* last. The robot then rejects every
-  other command as stale, and the ACK never matches the remote's most
-  recently sent sequence. After 450 ms the remote declares the link
-  unhealthy and reconnects, which costs about 1.5–2 s of no control. The
-  phase drifts, so this comes and goes. In one `estop_latch` seed the E-stop
-  latched 815 ms after it was requested, because the request landed during
-  such a reconnect (the robot was already inhibited at that point).
-- Sending exactly one command right after each fresh status, as
-  `docs/BLE_PROTOCOL.md` describes ("after receiving status"), fixed it in
-  the simulator. All 11 link scenarios passed on 10/10 seeds with this
-  change to `firmware/remote/remote.ino`. It is not applied; confirm it on
-  hardware.
-
-```diff
--      if (statusCharacteristic.valueUpdated()) {
-+      bool freshStatus = false;
-+      if (statusCharacteristic.valueUpdated()) {
-         ...
--          link.status(bytes, sizeof(bytes), millis());
-+          freshStatus = link.status(bytes, sizeof(bytes), millis());
-       }
- ...
--      if (link.ready() && static_cast<uint32_t>(now - lastSendAt) >= wire::kSendMs) {
-+      if (link.ready() && freshStatus) {  // reply to each status: newest challenge
-```
-
-The CI job `firmware-sim` runs all scenarios with `continue-on-error`
-until this is resolved, and uploads the reports as an artifact.
+- **Fixed: the remote intermittently dropped a healthy link.** The remote
+  used to send commands on its own free-running 50 ms timer, independent of
+  the robot's 50 ms status timer. In bad phase alignments each command
+  carried the challenge from the status *before* last, so the robot rejected
+  every other command as stale, and the ACK never matched the remote's most
+  recently sent sequence. The remote then declared the link unhealthy and
+  reconnected (about 1.5-2 s without control). `link_stability` failed on
+  10/10 seeds, and one E-stop latched 815 ms after the request because it
+  landed during such a reconnect.
+  `firmware/remote/remote.ino` now sends exactly one command after each
+  valid status notification, as `docs/BLE_PROTOCOL.md` describes. Afterwards
+  all 14 scenarios passed on 10/10 seeds. This fix is validated in simulation
+  only: confirm link stability and E-stop latency on the two real boards.
+  A side effect to be aware of: if status notifications stop, the remote
+  also stops sending (including E-stop frames). Its commands would carry a
+  stale challenge in that case anyway, and the robot's watchdog stops motion.
 
 ## Limits: what passing here does NOT show
 

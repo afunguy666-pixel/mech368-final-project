@@ -80,18 +80,23 @@ void loop() {
       break;
     case LinkPhase::Active: {
       if (!robot.connected()) { retry(now); break; }
+      bool freshStatus = false;
       if (statusCharacteristic.valueUpdated()) {
         uint8_t bytes[wire::kFrameSize];
         if (statusCharacteristic.valueLength() == static_cast<int>(sizeof(bytes)) &&
             statusCharacteristic.readValue(bytes, sizeof(bytes)) == sizeof(bytes))
-          link.status(bytes, sizeof(bytes), millis());
+          freshStatus = link.status(bytes, sizeof(bytes), millis());
       }
       now = millis(); // status processing may have advanced the local clock
       // 450 ms without a progressing application ACK signals a fault. Allow
       // startup grace, then reconnect; duplicate status never extends health.
       if (static_cast<uint32_t>(now - activeAt) >= mech368::MotionSafety::kTimeoutMs &&
           !link.healthy(now)) { retry(now); break; }
-      if (link.ready() && static_cast<uint32_t>(now - lastSendAt) >= wire::kSendMs) {
+      // Reply once to each valid status notification (robot sends every 50 ms),
+      // so every command carries the newest challenge and its ACK arrives in
+      // the next status. A free-running timer drifted into phases where every
+      // other command was stale and the link reconnected (docs/SIMULATOR.md).
+      if (link.ready() && freshStatus) {
         lastSendAt = now;
         uint8_t bytes[wire::kFrameSize];
         if (wire::encode(link.command(stopRequested), bytes, sizeof(bytes)) &&

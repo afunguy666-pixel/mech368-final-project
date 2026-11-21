@@ -11,9 +11,6 @@ jobs:
       - run: bash scripts/run-sil.sh
   firmware-sim:
     runs-on: ubuntu-24.04
-    # Informational until the remote/robot timer-phase issue in
-    # docs/SIMULATOR.md is resolved; remove continue-on-error afterwards.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - run: bash scripts/run-fw-sim.sh
