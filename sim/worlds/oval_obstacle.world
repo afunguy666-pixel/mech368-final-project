@@ -1,6 +1,6 @@
-# Oval course with a block on the far straight (see oval.world for syntax).
+# 远端直道上放了一个方块的椭圆赛道（语法见 oval.world）。
 size 3.0 2.0
 border
 stadium 1.5 1.0 1.4 0.5 0.05
 start 1.2 0.5 0
-box 1.35 1.42 1.47 1.58 block
+box 1.35 1.42 1.47 1.58 方块

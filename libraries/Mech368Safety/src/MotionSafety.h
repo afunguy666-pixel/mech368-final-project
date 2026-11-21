@@ -5,12 +5,12 @@
 
 namespace mech368 {
 
-// Only the adapter may classify a received frame as fresh and valid.
+// 只有适配层可以把收到的报文判定为新鲜且有效。
 enum class Packet : uint8_t { None, Invalid, Motion, EmergencyStop };
 
 class MotionSafety {
  public:
-  // Reserve 50 ms of the course's 500 ms budget for polling and output latency.
+  // 从课程要求的 500 ms 预算中预留 50 ms，用于轮询和输出延迟。
   static constexpr uint32_t kTimeoutMs = 450;
 
   void update(uint32_t now, bool linkUp, Packet packet,
@@ -20,7 +20,7 @@ class MotionSafety {
       hasCommand_ = false;
     }
 
-    // A validated E-stop always wins over a simultaneous recovery gesture.
+    // 经过校验的急停总是优先于同时发生的恢复手势。
     if (packet == Packet::EmergencyStop) {
       latched_ = true;
       hasCommand_ = false;
@@ -29,7 +29,7 @@ class MotionSafety {
 
     if (latched_) {
       if (localRecoveryGestureEdge) latched_ = false;
-      // Discard a motion command even if it arrives during the recovery poll.
+      // 即使运动指令恰好在恢复的那次轮询中到达，也将其丢弃。
       return;
     }
 

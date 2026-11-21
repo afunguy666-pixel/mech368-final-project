@@ -25,11 +25,11 @@ void retry(uint32_t now) {
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
-  Serial.begin(115200); // No wait for USB attachment.
+  Serial.begin(115200); // 不等待 USB 连接。
   bleReady = BLE.begin();
   if (!bleReady) return;
-  // Connect/discovery/subscription remain synchronous inside ArduinoBLE.
-  // This limits each ATT wait, not the total duration of a discovery operation.
+  // 连接/服务发现/订阅在 ArduinoBLE 内部仍是同步（阻塞）的。
+  // 这里限制的是每一次 ATT 等待，而不是一次服务发现的总耗时。
   BLE.setTimeout(100);
 }
 
@@ -37,8 +37,8 @@ void loop() {
   const uint32_t beforePoll = millis();
   digitalWrite(LED_BUILTIN, bleReady && link.healthy(beforePoll) ? HIGH :
                ((beforePoll / 125U) % 2U ? HIGH : LOW));
-  // Bench-only E-stop input. Sticky until remote reset; no motor pin assumed.
-  // TODO: replace/add an explicitly verified physical input and IMU mapping.
+  // 仅用于台架的急停输入。一直"粘住"直到遥控器复位；不假定任何电机引脚。
+  // TODO：替换为/增加一个经过明确验证的实体输入，以及 IMU 映射。
   if (Serial.available() > 0 && Serial.read() == 'e') stopRequested = true;
   if (!bleReady) return;
   BLE.poll();
@@ -74,7 +74,7 @@ void loop() {
       if (!robot.connected() || !statusCharacteristic.subscribe()) {
         retry(millis()); break;
       }
-      // Do not read a cached GATT value. Wait for a fresh status notification.
+      // 不读取缓存的 GATT 值，而是等待一条新的状态通知。
       activeAt = millis(); lastSendAt = activeAt;
       phase = LinkPhase::Active;
       break;
@@ -87,15 +87,15 @@ void loop() {
             statusCharacteristic.readValue(bytes, sizeof(bytes)) == sizeof(bytes))
           freshStatus = link.status(bytes, sizeof(bytes), millis());
       }
-      now = millis(); // status processing may have advanced the local clock
-      // 450 ms without a progressing application ACK signals a fault. Allow
-      // startup grace, then reconnect; duplicate status never extends health.
+      now = millis(); // 处理状态时本地时钟可能已经前进
+      // 450 ms 内应用层 ACK 没有进展即视为故障。启动时留出宽限期，
+      // 之后重连；重复的状态永远不能延长健康状态。
       if (static_cast<uint32_t>(now - activeAt) >= mech368::MotionSafety::kTimeoutMs &&
           !link.healthy(now)) { retry(now); break; }
-      // Reply once to each valid status notification (robot sends every 50 ms),
-      // so every command carries the newest challenge and its ACK arrives in
-      // the next status. A free-running timer drifted into phases where every
-      // other command was stale and the link reconnected (docs/SIMULATOR.md).
+      // 每收到一条有效状态通知（机器人每 50 ms 发一条）就回复一条指令，
+      // 这样每条指令都带着最新的挑战码，它的 ACK 也会在下一条状态里回来。
+      // 原来独立运行的定时器会漂移到某些相位，使每隔一条指令就过期，
+      // 链路因此反复重连（见 docs/SIMULATOR.md）。
       if (link.ready() && freshStatus) {
         lastSendAt = now;
         uint8_t bytes[wire::kFrameSize];

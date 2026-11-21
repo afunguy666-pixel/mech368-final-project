@@ -9,5 +9,5 @@ for test in tests/*_test.cpp; do
     -I libraries/Mech368Safety/src -I libraries/Mech368BLE/src \
     "$test" -o "$executable"
   "$executable"
-  printf '%s\n' "PASS: $test"
+  printf '%s\n' "通过：$test"
 done

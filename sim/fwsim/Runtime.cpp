@@ -1,5 +1,5 @@
-// Host implementation of the Arduino core, Serial, String, IMU and APDS used
-// by sketches running inside the firmware simulator.
+// 固件模拟器中运行的程序所用的 Arduino 核心库、Serial、String、
+// IMU、APDS 和 HS300x 在电脑端的实现。
 #include "Runtime.h"
 #include <Arduino_APDS9960.h>
 #include <Arduino_BMI270_BMM150.h>
@@ -11,7 +11,7 @@
 
 namespace fwsim {
 
-// -------------------------------------------------------------- registry ---
+// -------------------------------------------------------------- 注册表 ---
 static std::vector<SketchEntry>& registry() {
   static std::vector<SketchEntry> entries;
   return entries;
@@ -30,27 +30,27 @@ std::vector<std::string> sketchNames() {
   return names;
 }
 
-// --------------------------------------------------------- current board ---
+// --------------------------------------------------------- 当前开发板 ---
 static Board* g_current = nullptr;
 Board* current() { return g_current; }
 Board& cur() {
   if (!g_current)
-    throw std::logic_error("Arduino API called outside a simulated board "
-                           "(e.g. from a global constructor)");
+    throw std::logic_error("在模拟开发板之外调用了 Arduino API"
+                           "（例如在全局对象的构造函数里）");
   return *g_current;
 }
 CurrentBoard::CurrentBoard(Board* b) : previous(g_current) { g_current = b; }
 CurrentBoard::~CurrentBoard() { g_current = previous; }
 
-// ----------------------------------------------------------------- board ---
+// ----------------------------------------------------------------- 开发板 ---
 void Board::spend(uint64_t us) {
-  if (inIsr) return;  // ISRs are modelled as instantaneous
+  if (inIsr) return;  // 中断服务函数视为瞬间完成
   clockUs += us;
   if (clockUs - callStartUs > maxCallUs) {
     char buf[160];
     std::snprintf(buf, sizeof buf,
-                  "%s: one %s() call has run for more than %.1f s of virtual time "
-                  "(blocking wait that never ends?)",
+                  "%s：单次 %s() 调用已运行超过 %.1f s 虚拟时间"
+                  "（是不是有一个永远等不到结果的阻塞等待？）",
                   name.c_str(), started ? "loop" : "setup", maxCallUs / 1e6);
     throw StuckSketch(buf);
   }
@@ -145,7 +145,7 @@ void Board::logPin(int pin, double value) {
 int Board::levelAt(int pin, uint64_t t) const {
   for (auto it = pinLog.rbegin(); it != pinLog.rend(); ++it)
     if (it->pin == pin && it->t <= t) return it->value > 0.5 ? 1 : 0;
-  return -1;  // never driven by the sketch
+  return -1;  // 程序从未驱动过这个引脚
 }
 
 void Board::powerDown() {
@@ -169,7 +169,7 @@ std::string lower(const std::string& s) {
 using fwsim::cur;
 using fwsim::Board;
 
-// ------------------------------------------------------------------ time ---
+// ------------------------------------------------------------------ 时间 ---
 unsigned long millis() {
   Board& b = cur();
   b.spend(b.timeCallUs);
@@ -188,10 +188,10 @@ void delay(unsigned long ms) {
 void delayMicroseconds(unsigned int us) { cur().spend(us); }
 void yield() { cur().spend(1); }
 
-// ------------------------------------------------------------------ pins ---
+// ------------------------------------------------------------------ 引脚 ---
 static fwsim::PinState& pinRef(Board& b, pin_size_t pin) {
   if (pin < 0 || pin >= fwsim::kMaxPins)
-    throw std::out_of_range(b.name + ": invalid pin number " + std::to_string(pin));
+    throw std::out_of_range(b.name + "：无效的引脚编号 " + std::to_string(pin));
   return b.pins[pin];
 }
 
@@ -211,7 +211,7 @@ void digitalWrite(pin_size_t pin, int value) {
   auto& p = pinRef(b, pin);
   if (p.mode == -1 && !b.warnedPin[pin]) {
     b.warnedPin[pin] = true;
-    b.warn("digitalWrite(" + std::to_string(pin) + ") before pinMode(OUTPUT)");
+    b.warn("在 pinMode(OUTPUT) 之前调用了 digitalWrite(" + std::to_string(pin) + ")");
   }
   p.pwm = false;
   p.out = value ? 1 : 0;
@@ -274,7 +274,7 @@ void noTone(pin_size_t pin) { digitalWrite(pin, LOW); }
 void attachInterrupt(pin_size_t pin, voidFuncPtr callback, int mode) {
   Board& b = cur();
   auto& p = pinRef(b, pin);
-  if (!p.driven) {  // remember the current level for edge detection
+  if (!p.driven) {  // 记住当前电平，用于边沿检测
     p.drivenLevel = b.inputLevel(pin);
   }
   p.isr = callback;
@@ -470,7 +470,7 @@ void consume(uint64_t& lastIndex, uint64_t nowUs, double rateHz) {
   lastIndex = static_cast<uint64_t>(nowUs * rateHz / 1e6) + 1;
 }
 fwsim::ImuSample imuSample(Board& b) {
-  b.spend(b.ioCallUs * 20);  // I2C transfer
+  b.spend(b.ioCallUs * 20);  // I2C 传输
   return b.io ? b.io->imu(b) : fwsim::ImuSample();
 }
 }  // namespace
@@ -534,7 +534,7 @@ HS300xClass HS300x;
 int HS300xClass::begin() { cur().spend(2000); return 1; }
 float HS300xClass::readTemperature(int units) {
   Board& b = cur();
-  b.spend(10000);  // assumed: one blocking measurement
+  b.spend(10000);  // 假定：一次阻塞的测量
   double c = 22.0;
   if (b.io) b.io->temperature(b, c);
   return static_cast<float>(units == FAHRENHEIT ? c * 9.0 / 5.0 + 32.0 : c);

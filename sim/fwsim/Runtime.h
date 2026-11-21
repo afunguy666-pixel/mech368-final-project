@@ -1,5 +1,5 @@
-// Internal runtime shared by the host Arduino libraries and the simulation
-// harness. Sketches never include this header.
+// 供电脑端 Arduino 替身库和模拟框架共用的内部运行时。
+// 程序代码不会包含这个头文件。
 #ifndef FWSIM_RUNTIME_H
 #define FWSIM_RUNTIME_H
 
@@ -18,7 +18,7 @@ namespace fwsim {
 constexpr int kMaxPins = 64;
 constexpr uint64_t kNever = UINT64_MAX;
 
-// ------------------------------------------------------------ sketches ---
+// -------------------------------------------------------------- 程序 ---
 struct SketchEntry {
   std::string name;
   void (*setup)();
@@ -33,12 +33,12 @@ struct SketchRegistrar {
   }
 };
 
-// Thrown when one setup()/loop() call runs for too long in virtual time.
+// 单次 setup()/loop() 调用占用的虚拟时间过长时抛出。
 struct StuckSketch : std::runtime_error {
   explicit StuckSketch(const std::string& m) : std::runtime_error(m) {}
 };
 
-// ----------------------------------------------------------------- board ---
+// ------------------------------------------------------------- 开发板 ---
 struct ImuSample {
   float ax = 0, ay = 0, az = 1;      // g
   float gx = 0, gy = 0, gz = 0;      // deg/s
@@ -46,12 +46,12 @@ struct ImuSample {
 };
 
 class Board;
-// Hardware attached to a board's pins (vehicle model, hand model...).
+// 接在开发板引脚上的硬件（小车模型、手部模型等）。
 class BoardIO {
  public:
   virtual ~BoardIO() {}
-  virtual void sync(Board&) {}  // bring the physical world up to board time
-  virtual bool analogInput(Board&, int, double&) { return false; }  // volts
+  virtual void sync(Board&) {}  // 把物理世界推进到开发板当前时间
+  virtual bool analogInput(Board&, int, double&) { return false; }  // 伏特
   virtual bool digitalInput(Board&, int, int&) { return false; }
   virtual bool pulseIn(Board&, int, int, uint64_t, uint64_t&) { return false; }
   virtual void outputChanged(Board&, int) {}
@@ -59,26 +59,26 @@ class BoardIO {
   virtual bool gestureDue(Board&) { return false; }
   virtual int takeGesture(Board&) { return -1; }
   virtual int proximity(Board&) { return 255; }
-  virtual bool temperature(Board&, double&) { return false; }  // deg C
+  virtual bool temperature(Board&, double&) { return false; }  // 摄氏度
 };
 
 struct PinState {
-  int mode = -1;           // -1 = never configured
-  int out = 0;             // last digitalWrite level
-  bool pwm = false;        // analogWrite active
-  double duty = 0.0;       // 0..1 when pwm
-  bool driven = false;     // input level driven by the world (e.g. encoder)
+  int mode = -1;           // -1 = 从未配置
+  int out = 0;             // 最后一次 digitalWrite 的电平
+  bool pwm = false;        // analogWrite 生效中
+  double duty = 0.0;       // PWM 时为 0..1
+  bool driven = false;     // 由物理世界驱动的输入电平（例如编码器）
   int drivenLevel = 0;
-  bool forced = false;     // input level forced by the scenario
+  bool forced = false;     // 由场景强制设定的输入电平
   int forcedLevel = 0;
   bool analogForced = false;
   double analogVolts = 0.0;
-  // interrupt
+  // 中断
   voidFuncPtr isr = nullptr;
   int isrMode = 0;
 };
 
-struct PinEvent { uint64_t t; int pin; double value; };  // value = level or duty
+struct PinEvent { uint64_t t; int pin; double value; };  // value = 电平或占空比
 struct SerialLine { uint64_t t; std::string text; };
 
 struct BleEvent {
@@ -87,7 +87,7 @@ struct BleEvent {
   int conn;
   std::string uuid;
   std::vector<uint8_t> bytes;
-  bool local = false;  // disconnect initiated by this board itself
+  bool local = false;  // 由本板自己发起的断开
 };
 
 struct BleState {
@@ -100,7 +100,7 @@ struct BleState {
   bool scanning = false;
   std::string scanUuid, scanName, scanAddress;
   uint64_t scanSince = 0;
-  std::vector<int> reported;  // board ids already returned by available()
+  std::vector<int> reported;  // 已由 available() 返回过的开发板 id
   BLEDeviceEventHandler handlers[3] = {nullptr, nullptr, nullptr};
   unsigned long timeoutMs = 5000;
   std::deque<BleEvent> inbox;
@@ -120,16 +120,16 @@ class Board {
   uint64_t powerOnUs = 0;
   bool started = false, poweredOff = false;
   uint64_t callStartUs = 0;
-  uint64_t maxCallUs = 20000000;  // 20 s of virtual time per setup()/loop()
+  uint64_t maxCallUs = 20000000;  // 每次 setup()/loop() 最多 20 s 虚拟时间
 
-  // Cost model (virtual time consumed by API calls).
+  // 耗时模型（各 API 调用消耗的虚拟时间）。
   uint64_t loopCostUs = 1000, timeCallUs = 2, ioCallUs = 5, analogCallUs = 20;
-  uint64_t loopJitterUs = 300;  // each loop() also takes 0..jitter extra
+  uint64_t loopJitterUs = 300;  // 每次 loop() 额外耗时 0..jitter
   std::mt19937 rng{1};
 
   PinState pins[kMaxPins];
   bool interruptsEnabled = true;
-  std::deque<std::pair<int, uint64_t>> pendingIsr;  // pin, time
+  std::deque<std::pair<int, uint64_t>> pendingIsr;  // 引脚，时间
   bool inIsr = false;
   uint64_t isrTimeUs = 0;
   bool syncing = false;
@@ -146,44 +146,44 @@ class Board {
   uint64_t now() const { return inIsr ? isrTimeUs : clockUs; }
   void spend(uint64_t us);
   void sync();
-  // World-driven digital input change; fires interrupts.
+  // 由物理世界驱动的数字输入变化；会触发中断。
   void setInputLevel(int pin, int level, uint64_t t);
   void flushInterrupts();
   int inputLevel(int pin);
-  double outputFraction(int pin) const;
+  double outputFraction(int pin) const;  // 0..1（PWM 占空比或数字电平）
   double lastLogged[kMaxPins];
   bool warnedPin[kMaxPins] = {};
-  uint64_t timeOffsetUs = 0;  // shifts millis()/micros() (rollover tests)
+  uint64_t timeOffsetUs = 0;  // 平移 millis()/micros()（用于测试溢出回绕）
   void warn(const std::string& m);
-  std::function<void(const Board&, const std::string&)> onWarning;  // 0..1 (PWM duty or digital level)
+  std::function<void(const Board&, const std::string&)> onWarning;
   int outputLevel(int pin) const { return pin >= 0 && pin < kMaxPins ? pins[pin].out : 0; }
   void logPin(int pin, double value);
-  int levelAt(int pin, uint64_t t) const;  // from pinLog; -1 if never written
+  int levelAt(int pin, uint64_t t) const;  // 取自 pinLog；从未写过则为 -1
   void powerDown();
 };
 
 Board* current();
-Board& cur();  // throws if no board is executing
-struct CurrentBoard {  // RAII: make b the executing board
+Board& cur();  // 没有开发板在执行时抛出异常
+struct CurrentBoard {  // RAII：在作用域内让 b 成为当前执行的开发板
   explicit CurrentBoard(Board* b);
   ~CurrentBoard();
   Board* previous;
 };
 
-// ----------------------------------------------------------------- radio ---
+// ----------------------------------------------------------- 无线链路 ---
 struct RadioConfig {
-  uint64_t latencyUs = 10000;        // one-way, ~1 connection interval
-  uint64_t jitterUs = 5000;          // uniform 0..jitter added
+  uint64_t latencyUs = 10000;        // 单向，约 1 个连接间隔
+  uint64_t jitterUs = 5000;          // 额外加上 0..jitter 的均匀随机值
   uint64_t supervisionTimeoutUs = 2000000;
-  uint64_t scanFindUs = 120000;      // advertising -> available()
-  uint64_t connectUs = 40000;        // blocking connect()
-  uint64_t discoverUs = 120000;      // blocking discoverService()
-  uint64_t attRoundTripUs = 30000;   // subscribe()/write with response
-  double blockingSpread = 0.5;       // blocking calls take base * (1 +/- spread)
+  uint64_t scanFindUs = 120000;      // 开始广播 -> available() 能发现
+  uint64_t connectUs = 40000;        // 阻塞的 connect()
+  uint64_t discoverUs = 120000;      // 阻塞的 discoverService()
+  uint64_t attRoundTripUs = 30000;   // subscribe()/带响应的写入
+  double blockingSpread = 0.5;       // 阻塞调用耗时为 基准值 * (1 ± spread)
   double lossCentralToPeripheral = 0, lossPeripheralToCentral = 0;
   double corruptCentralToPeripheral = 0, corruptPeripheralToCentral = 0;
   bool blockCentralToPeripheral = false, blockPeripheralToCentral = false;
-  bool linkAvailable = true;  // false = out of range / jammed
+  bool linkAvailable = true;  // false = 超出范围 / 受干扰
 };
 
 struct RadioPacket {
@@ -192,13 +192,13 @@ struct RadioPacket {
   bool fromCentral;
   int central, peripheral;
   std::string uuid;
-  std::vector<uint8_t> bytes;  // as sent (before corruption)
+  std::vector<uint8_t> bytes;  // 发送时的内容（损坏之前）
   Fate fate;
 };
 
 struct Connection {
   int id, central, peripheral;
-  bool centralUp = true, peripheralUp = true;  // each side's view
+  bool centralUp = true, peripheralUp = true;  // 各自一方看到的状态
   bool physical = true;
   uint64_t lostAt = kNever;
   uint64_t lastDeliverToCentral = 0, lastDeliverToPeripheral = 0;
@@ -209,7 +209,7 @@ class Air {
  public:
   RadioConfig config;
   std::vector<Board*> boards;
-  std::deque<Connection> connections;  // deque: stable references
+  std::deque<Connection> connections;  // 用 deque：引用保持有效
   std::vector<std::weak_ptr<CharState>> remoteChars;
   std::mt19937 rng{368};
   std::function<void(uint64_t, const std::string&)> log;
@@ -226,26 +226,26 @@ class Air {
                 const std::vector<uint8_t>& bytes, BleEvent::Kind kind, uint64_t now);
   void post(Board& to, const BleEvent& e);
   void dropLink(Connection& c, uint64_t now, const std::string& why);
-  void process(Board& b);  // deliver due events (inside poll)
+  void process(Board& b);  // 投递已到期的事件（在 poll 内）
   void note(uint64_t t, const std::string& m) { if (log) log(t, m); }
   void closeByLocal(Connection& c, Board& self, uint64_t now);
-  uint64_t blocking(uint64_t baseUs);  // randomised duration of a blocking call
+  uint64_t blocking(uint64_t baseUs);  // 阻塞调用的随机化耗时
   int nextConn = 1;
 };
 Air& air();
 
-// Implementation detail of the BLE classes.
+// BLE 类的实现细节。
 struct CharState {
   std::string uuid;
   uint16_t props = 0;
   int capacity = 0;
   bool fixedLength = false;
   std::vector<uint8_t> value;
-  int owner = -1;  // board id
+  int owner = -1;  // 开发板 id
   bool remote = false;
-  int conn = -1;               // remote: connection id
-  bool writtenFlag = false;    // local
-  bool updatedFlag = false;    // remote
+  int conn = -1;               // 远端特征值：连接 id
+  bool writtenFlag = false;    // 本地特征值
+  bool updatedFlag = false;    // 远端特征值
   bool remoteSubscribed = false;
   BLECharacteristicEventHandler handlers[BLECharacteristicEventLast] = {};
 };
@@ -254,9 +254,9 @@ struct ServiceState {
   std::vector<std::shared_ptr<CharState>> chars;
 };
 struct DeviceState {
-  int viewer = -1;   // board holding this handle
-  int peer = -1;     // board it refers to
-  int conn = -1;     // connection id (when connected/connecting)
+  int viewer = -1;   // 持有这个句柄的开发板
+  int peer = -1;     // 它所指向的开发板
+  int conn = -1;     // 连接 id（已连接/正在连接时）
   std::vector<std::shared_ptr<ServiceState>> discovered;
 };
 

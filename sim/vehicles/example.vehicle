@@ -1,31 +1,31 @@
-# Virtual robot hardware for the firmware simulator. Every pin and number here
-# is a PLACEHOLDER: replace them with your real wiring and bench measurements.
-# Chassis frame: x forward, y to the left, metres. Pins: D0-D13, A0-A7, LEDR...
-track_width 0.10          # wheel centre to wheel centre
+# 固件模拟器的虚拟机器人硬件。这里的每个引脚和数字都是**占位值**：
+# 请换成你们的实际接线和台架实测数据。关键字保持英文。
+# 底盘坐标系：x 向前，y 向左，单位为米。引脚：D0-D13、A0-A7、LEDR 等。
+track_width 0.10          # 两轮中心之间的距离
 wheel_radius 0.020
-body_radius 0.07          # collision circle (handout: fits a 15 cm cylinder)
-motor_max_speed 30        # wheel rad/s at full duty and nominal voltage
-motor_time_constant 0.08  # s, first-order speed response
-motor_deadband 0.06       # |duty| below this does not turn the wheel
-nominal_voltage 7.4       # wheel speed scales with battery / nominal
-# Motor drivers: pwm_dir pwm= dir= | in_in in1= in2= | en_in_in en= in1= in2=
-# Add "invert" if forward duty spins that wheel backwards.
+body_radius 0.07          # 碰撞圆半径（讲义：必须能放进直径 15 cm 的圆柱）
+motor_max_speed 30        # 满占空比、额定电压下的车轮转速 rad/s
+motor_time_constant 0.08  # 秒，转速一阶响应时间常数
+motor_deadband 0.06       # |占空比| 低于此值时车轮不转
+nominal_voltage 7.4       # 车轮转速按 电池电压 / 额定电压 缩放
+# 电机驱动：pwm_dir pwm= dir= | in_in in1= in2= | en_in_in en= in1= in2=
+# 如果正向占空比让这个轮子反转，加上 "invert"。
 motor left  pwm_dir pwm=D5 dir=D4
 motor right pwm_dir pwm=D6 dir=D7
-# Quadrature encoders: ppr = pulses per WHEEL revolution on channel A.
+# 正交编码器：ppr = 车轮每转一圈 A 相的脉冲数。
 encoder left  a=D2 b=D3 ppr=360
 encoder right a=D8 b=D9 ppr=360
-# Reflective line sensors: analog (on=V over tape, off=V over floor) or
-# digital (add "digital", on_level=0/1).
-# Left/right pair straddles the 5 cm tape (handout); centre sits on it.
-line_sensor left   pin=A0 x=0.06 y=0.035
-line_sensor centre pin=A1 x=0.06 y=0
-line_sensor right  pin=A2 x=0.06 y=-0.035
-# Distance sensors: ultrasonic (HC-SR04 style, pulseIn) or ir_distance (analog).
-ultrasonic front trig=D10 echo=D11 x=0.07 y=0 yaw_deg=0 max=2.0
-# Battery through a divider into an analog pin (V_batt = divider * V_pin).
+# 反射式巡线传感器：模拟量（on=在胶带上时的电压，off=在地面上时的电压）或
+# 数字量（加上 "digital"，on_level=0/1）。名字可以自取。
+# 左右一对跨在 5 cm 胶带两侧（讲义要求），中间的压在胶带上。
+line_sensor 左 pin=A0 x=0.06 y=0.035
+line_sensor 中 pin=A1 x=0.06 y=0
+line_sensor 右 pin=A2 x=0.06 y=-0.035
+# 测距传感器：ultrasonic（HC-SR04 式，pulseIn）或 ir_distance（模拟量）。
+ultrasonic 前方 trig=D10 echo=D11 x=0.07 y=0 yaw_deg=0 max=2.0
+# 电池经分压接到模拟引脚（V_电池 = divider * V_引脚）。
 battery pin=A7 divider=3.0 volts=8.0 drain_per_min=0
-# Onboard IMU gyro error, deg/s.
+# 板载 IMU 陀螺仪误差，单位 deg/s。
 gyro bias=0.2 noise=0.05
-# Onboard HS300x temperature sensor: first-order lag (s), noise and offset (deg C).
+# 板载 HS300x 温度传感器：一阶滞后（秒）、噪声和偏移（摄氏度）。
 temperature tau=2.0 noise=0.05 offset=0

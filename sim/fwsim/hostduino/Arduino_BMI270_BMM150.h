@@ -1,8 +1,8 @@
-// Host stand-in for Arduino_BMI270_BMM150 (Nano 33 BLE Sense Rev2 IMU).
-// Units match the real library: acceleration in g, angular rate in deg/s and
-// magnetic field in microtesla. Values come from the simulated vehicle (robot
-// board) or the scripted hand tilt (remote board). Axis orientation on the
-// real board must still be checked on the bench.
+// Arduino_BMI270_BMM150（Nano 33 BLE Sense Rev2 的 IMU）的替身。
+// 单位与真实库一致：加速度为 g，角速度为 deg/s，
+// 磁场为微特斯拉。数值来自模拟小车（机器人板）
+// 或脚本设定的手部倾斜（遥控器板）。真实开发板上的坐标轴方向
+// 仍需在台架上确认。
 #ifndef FWSIM_ARDUINO_BMI270_BMM150_H
 #define FWSIM_ARDUINO_BMI270_BMM150_H
 

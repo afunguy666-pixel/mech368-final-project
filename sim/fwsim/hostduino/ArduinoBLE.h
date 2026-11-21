@@ -1,8 +1,8 @@
-// Host stand-in for ArduinoBLE 1.4.x used by the firmware simulator.
-// Covers the peripheral/central subset a two-board sketch normally uses. All
-// traffic goes through a simulated radio (sim/fwsim/Ble.cpp) with configurable
-// latency, loss, corruption, blocking and link loss. Handlers run only inside
-// BLE.poll() (and blocking central calls), like the real library.
+// 固件模拟器使用的 ArduinoBLE 1.4.x 替身。
+// 覆盖双板程序通常会用到的外设/中心端功能子集。所有通信都经过
+// 一条模拟的无线链路（sim/fwsim/Ble.cpp），延迟、丢包、损坏、阻断
+// 和断链都可配置。与真实库一样，回调只在 BLE.poll()
+// （以及中心端的阻塞调用）内部执行。
 #ifndef FWSIM_ARDUINO_BLE_H
 #define FWSIM_ARDUINO_BLE_H
 
@@ -28,7 +28,7 @@ enum BLEProperty {
 };
 enum BLEDeviceEvent { BLEConnected = 0, BLEDisconnected = 1, BLEDiscovered = 2,
                       BLEDeviceLastEvent };
-// As in ArduinoBLE, BLERead (0x02) doubles as the "read" characteristic event.
+// 与 ArduinoBLE 一样，BLERead (0x02) 同时也是特征值的"读取"事件。
 enum BLECharacteristicEvent { BLESubscribed = 0, BLEUnsubscribed = 1,
                               BLEWritten = 3, BLEUpdated = 3,
                               BLECharacteristicEventLast = 4 };

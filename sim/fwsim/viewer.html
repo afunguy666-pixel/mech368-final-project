@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FWSIM_TITLE · MECH 368 sim replay</title>
+<title>FWSIM_TITLE · MECH 368 模拟回放</title>
 <style>
 :root {
   --bg: #f6f7f9; --panel: #ffffff; --ink: #1d2433; --muted: #5d6879; --line: #d9dee6;
@@ -38,6 +38,7 @@ button, select { font: inherit; color: var(--ink); background: var(--chip); bord
 #strip { margin-top: 8px; cursor: crosshair; }
 h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 10px 0 6px; }
 h2:first-child { margin-top: 0; }
+#mapBox h2 { margin-top: 10px; }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-variant-numeric: tabular-nums; }
 .kv span:nth-child(odd) { color: var(--muted); }
 .leds { display: flex; gap: 14px; flex-wrap: wrap; }
@@ -72,44 +73,44 @@ h2:first-child { margin-top: 0; }
     <div class="card">
       <canvas id="world"></canvas>
       <div class="controls">
-        <button id="play" aria-label="Play or pause">▶</button>
-        <select id="speed" aria-label="Playback speed">
+        <button id="play" aria-label="播放或暂停">▶</button>
+        <select id="speed" aria-label="播放速度">
           <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
           <option value="1" selected>1×</option><option value="2">2×</option>
           <option value="4">4×</option><option value="8">8×</option>
         </select>
-        <input id="seek" type="range" min="0" value="0" step="1" aria-label="Time">
+        <input id="seek" type="range" min="0" value="0" step="1" aria-label="时间">
         <span id="time"></span>
       </div>
       <canvas id="strip" height="200"></canvas>
     </div>
     <div class="card" style="margin-top:12px">
-      <h2>Events and serial output</h2>
+      <h2>事件与串口输出</h2>
       <ul id="log"></ul>
     </div>
   </section>
   <aside class="card">
-    <h2>Indicators</h2>
+    <h2>指示灯</h2>
     <div class="leds">
-      <div class="led"><div class="dot" id="ledRobot"></div>robot LED</div>
-      <div class="led"><div class="dot" id="ledRgb"></div>robot RGB</div>
-      <div class="led"><div class="dot" id="ledRemote"></div>remote LED</div>
+      <div class="led"><div class="dot" id="ledRobot"></div>机器人 LED</div>
+      <div class="led"><div class="dot" id="ledRgb"></div>机器人 RGB</div>
+      <div class="led"><div class="dot" id="ledRemote"></div>遥控器 LED</div>
     </div>
-    <h2>Link / last status seen by remote</h2>
+    <h2>链路 / 遥控器最近收到的状态</h2>
     <div class="chips" id="chips"></div>
-    <h2>Motion</h2>
+    <h2>运动</h2>
     <div class="kv" id="kv"></div>
-    <h2>Motor command / wheel speed</h2>
+    <h2>电机指令 / 轮速</h2>
     <div class="bars" id="bars"></div>
-    <h2 id="sensH">Sensors</h2>
+    <h2 id="sensH">传感器</h2>
     <div class="bars" id="sensors"></div>
     <div id="mapBox" hidden>
-      <h2>Temperature map</h2>
-      <label><input type="checkbox" id="showHeat" checked> true field</label>
-      <label><input type="checkbox" id="showMap" checked> logged points</label>
+      <h2>温度地图</h2>
+      <label><input type="checkbox" id="showHeat" checked> 真实温度场</label>
+      <label><input type="checkbox" id="showMap" checked> 记录的点</label>
       <div class="kv" id="mapKv" style="margin-top:6px"></div>
     </div>
-    <h2>Checks</h2>
+    <h2>检查</h2>
     <ul class="checks" id="checks"></ul>
   </aside>
 </main>
@@ -122,16 +123,16 @@ const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).
 let idx = 0, playing = false, speed = 1, lastFrame = 0, simTime = 0;
 
 $('title').textContent = DATA.name;
-$('badge').textContent = DATA.passed ? 'PASS' : 'FAIL';
+$('badge').textContent = DATA.passed ? '通过' : '失败';
 $('badge').className = 'badge ' + (DATA.passed ? 'pass' : 'fail');
 $('desc').textContent = DATA.description;
-$('sk').textContent = 'robot: ' + (DATA.sketches.robot || '—') + ' · remote: ' + (DATA.sketches.remote || '—');
-$('foot').textContent = 'World: ' + W.source + ' · Vehicle: ' + V.source +
-  ' · Virtual time; models are assumptions, not bench measurements.';
+$('sk').textContent = '机器人：' + (DATA.sketches.robot || '—') + ' · 遥控器：' + (DATA.sketches.remote || '—');
+$('foot').textContent = '场地：' + W.source + ' · 小车：' + V.source +
+  ' · 虚拟时间；模型均为假设，不是台架实测。';
 $('seek').max = Math.max(0, N - 1);
 for (const [ok, text, t] of DATA.checks) {
   const li = document.createElement('li'); li.className = ok ? 'ok' : 'bad';
-  li.textContent = text + '  (t=' + (t / 1000).toFixed(2) + ' s)'; $('checks').appendChild(li);
+  li.textContent = text + '（t=' + (t / 1000).toFixed(2) + ' s）'; $('checks').appendChild(li);
 }
 const logItems = DATA.log.map(([t, text]) => {
   const li = document.createElement('li');
@@ -160,7 +161,7 @@ function trueTemp(x, y) {
   return t;
 }
 let heatCache = null;
-function heatImage() {  // true field, 2 cm per pixel, drawn scaled and smoothed
+function heatImage() {  // 真实温度场，每像素 2 cm，缩放并平滑后绘制
   if (heatCache) return heatCache;
   const nx = Math.ceil(W.width / 0.02), ny = Math.ceil(W.height / 0.02);
   const c = document.createElement('canvas'); c.width = nx; c.height = ny;
@@ -201,11 +202,11 @@ function drawWorld() {
       ctx.beginPath(); ctx.arc(X(mx), Y(my), 3.2, 0, 7); ctx.fill(); ctx.stroke();
     }
   }
-  // trail
+  // 轨迹
   ctx.strokeStyle = css('--trail'); ctx.globalAlpha = 0.45; ctx.lineWidth = 2; ctx.beginPath();
   for (let i = 0; i <= idx; i++) i ? ctx.lineTo(X(S.x[i]), Y(S.y[i])) : ctx.moveTo(X(S.x[i]), Y(S.y[i]));
   ctx.stroke(); ctx.globalAlpha = 1;
-  // robot
+  // 机器人
   const x = S.x[idx], y = S.y[idx], yaw = S.yaw[idx];
   const P = (bx, by) => [X(x + Math.cos(yaw) * bx - Math.sin(yaw) * by), Y(y + Math.sin(yaw) * bx + Math.cos(yaw) * by)];
   V.distance.forEach(([dx, dy, dyaw, max], i) => {
@@ -232,12 +233,12 @@ function drawWorld() {
 
 const flagBit = (f, b) => f >= 0 && (f & b) !== 0;
 const rows = [
-  ['robot LED', i => S.led[i], '--robot'],
-  ['remote LED', i => S.rled[i], '--robot'],
-  ['remote link', i => (S.link[i] & 2) ? 1 : 0, '--ok'],
-  ['permitted', i => flagBit(S.flags[i], 4) ? 1 : 0, '--ok'],
-  ['E-stop', i => flagBit(S.flags[i], 2) ? 1 : 0, '--bad'],
-  ['collision', i => S.hit[i], '--bad'],
+  ['机器人 LED', i => S.led[i], '--robot'],
+  ['遥控器 LED', i => S.rled[i], '--robot'],
+  ['遥控器链路', i => (S.link[i] & 2) ? 1 : 0, '--ok'],
+  ['允许运动', i => flagBit(S.flags[i], 4) ? 1 : 0, '--ok'],
+  ['急停', i => flagBit(S.flags[i], 2) ? 1 : 0, '--bad'],
+  ['碰撞', i => S.hit[i], '--bad'],
 ];
 function drawStrip() {
   const [ctx, w, h] = fit($('strip'));
@@ -258,7 +259,7 @@ function drawStrip() {
     }
   });
   const y0 = 4 + rows.length * (rh + gap), dh = h - y0 - 4;
-  ctx.fillStyle = css('--muted'); ctx.fillText('duty L/R', 0, y0 + dh / 2);
+  ctx.fillStyle = css('--muted'); ctx.fillText('占空比 左/右', 0, y0 + dh / 2);
   ctx.strokeStyle = css('--line'); ctx.beginPath(); ctx.moveTo(left, y0 + dh / 2); ctx.lineTo(left + plotW, y0 + dh / 2); ctx.stroke();
   for (const [key, col] of [['ul', '--robot'], ['ur', '--warn']]) {
     ctx.strokeStyle = css(col); ctx.lineWidth = 1.2; ctx.beginPath();
@@ -280,22 +281,22 @@ function panel() {
   const dot = (el, on, color) => { el.style.background = on ? color : '#333'; };
   dot($('ledRobot'), S.led[idx], '#facc15');
   dot($('ledRemote'), S.rled[idx], '#facc15');
-  const r = !S.r[idx], g = !S.g[idx], b = !S.b[idx];  // active-low RGB
+  const r = !S.r[idx], g = !S.g[idx], b = !S.b[idx];  // RGB 为低电平点亮
   $('ledRgb').style.background = (r || g || b) ? `rgb(${r ? 255 : 0},${g ? 210 : 0},${b ? 255 : 0})` : '#333';
   const f = S.flags[idx], link = S.link[idx];
-  const chips = [['robot link', link & 1, 'good'], ['remote link', link & 2, 'good'],
-    ['ACK', flagBit(f, 1), 'good'], ['permitted', flagBit(f, 4), 'good'], ['E-STOP', flagBit(f, 2), 'bad'],
-    ['outputs disabled', flagBit(f, 8), 'bad']];
+  const chips = [['机器人链路', link & 1, 'good'], ['遥控器链路', link & 2, 'good'],
+    ['ACK', flagBit(f, 1), 'good'], ['允许运动', flagBit(f, 4), 'good'], ['急停', flagBit(f, 2), 'bad'],
+    ['输出已禁用', flagBit(f, 8), 'bad']];
   $('chips').innerHTML = chips.map(([n, on, kind]) => `<span class="chip ${on ? 'on ' + kind : ''}">${n}</span>`).join('');
   const speedMs = idx > 0 ? Math.hypot(S.x[idx] - S.x[idx - 1], S.y[idx] - S.y[idx - 1]) / ((S.t[idx] - S.t[idx - 1]) / 1000) : 0;
-  $('kv').innerHTML = [['x, y', S.x[idx].toFixed(3) + ', ' + S.y[idx].toFixed(3) + ' m'],
-    ['heading', (S.yaw[idx] * 180 / Math.PI).toFixed(1) + '°'], ['speed', (speedMs * 100).toFixed(1) + ' cm/s'],
-    ['battery', S.batt[idx].toFixed(2) + ' V'],
-    ['line offset', W.lines.length ? (S.off[idx] * 1000).toFixed(1) + ' mm' : '—'],
-    ['temperature', S.temp[idx].toFixed(1) + ' °C sensed / ' + S.ttrue[idx].toFixed(1) + ' true']]
+  $('kv').innerHTML = [['位置 x, y', S.x[idx].toFixed(3) + ', ' + S.y[idx].toFixed(3) + ' m'],
+    ['航向', (S.yaw[idx] * 180 / Math.PI).toFixed(1) + '°'], ['速度', (speedMs * 100).toFixed(1) + ' cm/s'],
+    ['电池', S.batt[idx].toFixed(2) + ' V'],
+    ['偏离赛道', W.lines.length ? (S.off[idx] * 1000).toFixed(1) + ' mm' : '—'],
+    ['温度', '测得 ' + S.temp[idx].toFixed(1) + ' °C / 真实 ' + S.ttrue[idx].toFixed(1) + ' °C']]
     .map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('');
-  $('bars').innerHTML = bar('duty L', S.ul[idx], S.ul[idx].toFixed(2)) + bar('duty R', S.ur[idx], S.ur[idx].toFixed(2)) +
-    bar('wheel L', S.wl[idx] / 40, S.wl[idx].toFixed(1)) + bar('wheel R', S.wr[idx] / 40, S.wr[idx].toFixed(1));
+  $('bars').innerHTML = bar('左占空比', S.ul[idx], S.ul[idx].toFixed(2)) + bar('右占空比', S.ur[idx], S.ur[idx].toFixed(2)) +
+    bar('左轮速', S.wl[idx] / 40, S.wl[idx].toFixed(1)) + bar('右轮速', S.wr[idx] / 40, S.wr[idx].toFixed(1));
   $('sensors').innerHTML = V.line.map(([, , n], i) => bar(n, S.line[i][idx], (S.line[i][idx] * 100).toFixed(0) + '%')).join('') +
     V.distance.map((d, i) => { const v = S.dist[i][idx]; return bar(d[4], v == null ? 0 : v / d[3], v == null ? '—' : (v * 100).toFixed(0) + 'cm'); }).join('');
   let current = null;
@@ -304,7 +305,7 @@ function panel() {
     if (!future) current = li;
   }
   if (current) { current.classList.add('now'); if (playing || seeking) {
-    const box = $('log'), top = current.offsetTop - box.offsetTop;  // scroll the log only, not the page
+    const box = $('log'), top = current.offsetTop - box.offsetTop;  // 只滚动日志框，不滚动整个页面
     if (top < box.scrollTop || top > box.scrollTop + box.clientHeight - current.offsetHeight)
       box.scrollTop = top - box.clientHeight / 2;
   } }
@@ -337,11 +338,11 @@ if (DATA.map.length || W.heat.length) {
   $('mapBox').hidden = false;
   const m = DATA.mapScore;
   $('mapKv').innerHTML = (DATA.map.length ? [
-    ['points', m.points + ' (' + m.unique + ' unique)'], ['density', m.perM2 + ' /m²'],
-    ['coverage', (m.coverage * 100).toFixed(0) + '% of ' + m.cell + ' m cells'],
-    ['position error', (m.posErr * 100).toFixed(1) + ' cm mean, ' + (m.maxPosErr * 100).toFixed(1) + ' max'],
-    ['temp error', m.tempErr.toFixed(2) + ' °C (sensor lag + noise)'],
-    ['map error', m.mapErr.toFixed(2) + ' °C at logged positions']] : [['points', 'none logged (print "MAP x y tempC")']])
+    ['点数', m.points + '（唯一 ' + m.unique + '）'], ['密度', m.perM2 + ' /m²'],
+    ['覆盖率', (m.coverage * 100).toFixed(0) + '%（' + m.cell + ' m 网格）'],
+    ['位置误差', '平均 ' + (m.posErr * 100).toFixed(1) + ' cm，最大 ' + (m.maxPosErr * 100).toFixed(1) + ' cm'],
+    ['温度误差', m.tempErr.toFixed(2) + ' °C（传感器滞后 + 噪声）'],
+    ['地图误差', m.mapErr.toFixed(2) + ' °C（在记录位置处）']] : [['点数', '没有记录（请打印 "MAP x y 温度"）']])
     .map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('');
   $('showHeat').onchange = $('showMap').onchange = render;
 }

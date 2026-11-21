@@ -1,8 +1,8 @@
-// Host (PC) stand-in for the Arduino core used by the firmware simulator.
-// Sketches compiled against this header run on a virtual clock; every call is
-// routed to the simulated board that is currently executing. This is NOT the
-// real mbed core: the board build in scripts/compile-firmware.sh stays the
-// authority on what compiles for the Nano 33 BLE Sense Rev2.
+// 固件模拟器使用的、在电脑上运行的 Arduino 核心库替身。
+// 基于本头文件编译的程序在虚拟时钟上运行；每次调用都会被转发到
+// 当前正在执行的那块模拟开发板。这**不是**真正的 mbed 核心库：
+// 能否为 Nano 33 BLE Sense Rev2 编译通过，
+// 以 scripts/compile-firmware.sh 中的开发板构建结果为准。
 #ifndef FWSIM_ARDUINO_H
 #define FWSIM_ARDUINO_H
 
@@ -29,7 +29,7 @@ enum PinMode { INPUT = 0, OUTPUT = 1, INPUT_PULLUP = 2, INPUT_PULLDOWN = 3,
 enum { DEC = 10, HEX = 16, OCT = 8, BIN = 2 };
 enum { AR_DEFAULT = 0, AR_INTERNAL = 1, AR_VDD = 2 };
 
-// Arduino Nano 33 BLE (mbed core) pin numbering.
+// Arduino Nano 33 BLE（mbed 核心库）的引脚编号。
 constexpr pin_size_t D0 = 0, D1 = 1, D2 = 2, D3 = 3, D4 = 4, D5 = 5, D6 = 6,
                      D7 = 7, D8 = 8, D9 = 9, D10 = 10, D11 = 11, D12 = 12,
                      D13 = 13;
@@ -210,7 +210,7 @@ class HardwareSerialHost : public Stream {
  public:
   void begin(unsigned long baud, uint16_t config = 0) { (void)baud; (void)config; }
   void end() {}
-  explicit operator bool() const { return true; }  // USB always "attached"
+  explicit operator bool() const { return true; }  // USB 始终视为"已连接"
   int available() override;
   int read() override;
   int peek() override;

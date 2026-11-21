@@ -1,17 +1,17 @@
-# Virtual course for the firmware simulator. Units: metres, degrees.
-# Commands:
-#   size W H                     floor size (x right, y up)
-#   border                       walls around the floor
-#   rounded_border R             same, with corner radius R
-#   start X Y HEADING_DEG        robot start pose (0 = facing +x, CCW positive)
-#   line WIDTH x1 y1 x2 y2 ...   tape polyline
-#   stadium CX CY STRAIGHT RADIUS WIDTH   closed oval tape loop
-#   box X0 Y0 X1 Y1 [name]       rectangular obstacle
-#   circle CX CY R [name]        round obstacle
-#   wall X0 Y0 X1 Y1 [name]      thin wall
-#   ambient C                    air temperature (default 22)
-#   heat X Y RADIUS DELTA [name] hot (+) or cold (-) spot: ambient + DELTA*exp(-(d/RADIUS)^2)
-# Practice loop, NOT the official course (see course.world, from the handout).
+# 固件模拟器的虚拟场地。单位：米、度。
+# 命令（关键字保持英文）：
+#   size W H                     场地尺寸（x 向右，y 向上）
+#   border                       场地四周的墙
+#   rounded_border R             同上，四角为半径 R 的圆角
+#   start X Y HEADING_DEG        机器人起始位姿（0 = 朝 +x，逆时针为正）
+#   line WIDTH x1 y1 x2 y2 ...   胶带折线
+#   stadium CX CY STRAIGHT RADIUS WIDTH   闭合的椭圆胶带环
+#   box X0 Y0 X1 Y1 [名字]       矩形障碍物
+#   circle CX CY R [名字]        圆形障碍物
+#   wall X0 Y0 X1 Y1 [名字]      薄墙
+#   ambient C                    环境气温（默认 22）
+#   heat X Y RADIUS DELTA [名字] 热点 (+) 或冷点 (-)：ambient + DELTA*exp(-(d/RADIUS)^2)
+# 练习用的环形赛道，**不是**正式赛道（正式赛道见按讲义绘制的 course.world）。
 size 3.0 2.0
 border
 stadium 1.5 1.0 1.4 0.5 0.05

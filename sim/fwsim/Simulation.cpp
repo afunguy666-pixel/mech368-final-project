@@ -19,17 +19,17 @@ uint64_t toUs(double ms) { return ms <= 0 ? 0 : static_cast<uint64_t>(ms * 1000.
 }  // namespace
 
 Simulation::Simulation() {
-  boards_[Robot].reset(new Board(Robot, "robot"));
-  boards_[Remote].reset(new Board(Remote, "remote"));
+  boards_[Robot].reset(new Board(Robot, "机器人"));
+  boards_[Remote].reset(new Board(Remote, "遥控器"));
 }
 Simulation::~Simulation() { air().reset(); }
 
 void Simulation::loadWorld(const std::string& path) {
-  if (started_) throw std::logic_error("loadWorld() must be called before runUntil()");
+  if (started_) throw std::logic_error("loadWorld() 必须在 runUntil() 之前调用");
   world_ = World::load(path);
 }
 void Simulation::loadVehicle(const std::string& path) {
-  if (started_) throw std::logic_error("loadVehicle() must be called before runUntil()");
+  if (started_) throw std::logic_error("loadVehicle() 必须在 runUntil() 之前调用");
   vehicleConfig_ = VehicleConfig::load(path);
 }
 static std::map<std::string, std::string>& substitutions() {
@@ -39,14 +39,14 @@ static std::map<std::string, std::string>& substitutions() {
 void substituteSketch(const std::string& from, const std::string& to) { substitutions()[from] = to; }
 
 void Simulation::useSketch(BoardId id, const std::string& requested, double powerOnMs) {
-  if (started_) throw std::logic_error("useSketch() must be called before runUntil()");
+  if (started_) throw std::logic_error("useSketch() 必须在 runUntil() 之前调用");
   const auto sub = substitutions().find(requested);
   const std::string sketch = sub == substitutions().end() ? requested : sub->second;
   const SketchEntry* entry = findSketch(sketch);
   if (!entry) {
     std::string known;
     for (const auto& n : sketchNames()) known += " " + n;
-    throw std::runtime_error("no sketch named '" + sketch + "' was compiled in (available:" +
+    throw std::runtime_error("没有编译进名为 '" + sketch + "' 的程序（可用的有：" +
                              known + ")");
   }
   Board& b = board(id);
@@ -59,7 +59,7 @@ Vehicle& Simulation::vehicle() {
   return *vehicle_;
 }
 
-// ------------------------------------------------------------- scripting ---
+// ------------------------------------------------------------- 脚本 ---
 void Simulation::at(double ms, std::function<void(Simulation&)> action, const std::string& label) {
   Action a{toUs(ms), actionOrder_++, action, label};
   auto it = std::upper_bound(actions_.begin(), actions_.end(), a,
@@ -71,14 +71,13 @@ void Simulation::at(double ms, std::function<void(Simulation&)> action, const st
 void Simulation::serialInput(BoardId id, double ms, const std::string& text) {
   at(ms, [id, text](Simulation& s) {
     for (char c : text) s.board(id).serialIn.push_back(c);
-  }, "serial input to " + board(id).name + ": \"" + text + "\"");
+  }, "向" + board(id).name + "串口输入：\"" + text + "\"");
 }
 void Simulation::gesture(double ms, int g) {
   static const char* names[] = {"UP", "DOWN", "LEFT", "RIGHT"};
   const uint64_t t = toUs(ms);
   at(0, [t, g](Simulation& s) { s.vehicle().gestures.push_back(std::make_pair(t, g)); });
-  at(ms, [](Simulation&) {}, std::string("APDS gesture ") + (g >= 0 && g < 4 ? names[g] : "?") +
-                                 " in front of the robot");
+  at(ms, [](Simulation&) {}, std::string("在机器人前方做 APDS 手势 ") + (g >= 0 && g < 4 ? names[g] : "?"));
 }
 void Simulation::tilt(double ms, double rollDeg, double pitchDeg) {
   hand_.tilt.push_back(std::make_pair(toUs(ms), Vec2{rollDeg, pitchDeg}));
@@ -92,18 +91,18 @@ void Simulation::setInput(BoardId id, double ms, int pin, int level) {
     PinState& p = s.board(id).pins[pin];
     p.forced = true;
     p.forcedLevel = level ? 1 : 0;
-  }, board(id).name + " input pin " + std::to_string(pin) + " = " + (level ? "HIGH" : "LOW"));
+  }, board(id).name + " 输入引脚 " + std::to_string(pin) + " = " + (level ? "HIGH" : "LOW"));
 }
 void Simulation::setAnalog(BoardId id, double ms, int pin, double volts) {
   at(ms, [id, pin, volts](Simulation& s) {
     PinState& p = s.board(id).pins[pin];
     p.analogForced = true;
     p.analogVolts = volts;
-  }, board(id).name + " analog pin " + std::to_string(pin) + " = " + std::to_string(volts) + " V");
+  }, board(id).name + " 模拟引脚 " + std::to_string(pin) + " = " + std::to_string(volts) + " V");
 }
 void Simulation::setBattery(double ms, double volts) {
   char buf[64];
-  std::snprintf(buf, sizeof buf, "battery set to %.2f V", volts);
+  std::snprintf(buf, sizeof buf, "电池电压设为 %.2f V", volts);
   at(ms, [volts](Simulation& s) { s.vehicle().batteryVolts = volts; }, buf);
 }
 void Simulation::powerOff(BoardId id, double ms) {
@@ -112,7 +111,7 @@ void Simulation::powerOff(BoardId id, double ms) {
     if (b.poweredOff) return;
     b.powerDown();
     air().boardPoweredOff(b, s.nowUs_);
-  }, board(id).name + " powered off");
+  }, board(id).name + " 断电");
 }
 void Simulation::linkLoss(double fromMs, double toMs) {
   at(fromMs, [](Simulation& s) { air().setLinkAvailable(false, s.nowUs_); });
@@ -128,28 +127,28 @@ void Simulation::block(bool remoteToRobot, double fromMs, double toMs) {
       (c2p ? air().config.blockCentralToPeripheral : air().config.blockPeripheralToCentral) = on;
     };
   };
-  const std::string what = remoteToRobot ? "remote -> robot" : "robot -> remote";
-  at(fromMs, set(true), "radio: block " + what + " traffic (link stays connected)");
-  at(toMs, set(false), "radio: unblock " + what + " traffic");
+  const std::string what = remoteToRobot ? "遥控器 -> 机器人" : "机器人 -> 遥控器";
+  at(fromMs, set(true), "无线：阻断 " + what + " 方向的通信（链路保持连接）");
+  at(toMs, set(false), "无线：恢复 " + what + " 方向的通信");
 }
 
-// ------------------------------------------------------------------- run ---
+// ------------------------------------------------------------------- 运行 ---
 void Simulation::start() {
   if (started_) return;
   started_ = true;
-  const RadioConfig radioConfig = air().config;  // keep settings made before start
+  const RadioConfig radioConfig = air().config;  // 保留启动前所做的设置
   air().reset();
   air().config = radioConfig;
   air().rng.seed(seed_);
   air().boards = {boards_[Robot].get(), boards_[Remote].get()};
-  air().log = [this](uint64_t t, const std::string& m) { emitEvent(t, "ble", m); };
+  air().log = [this](uint64_t t, const std::string& m) { emitEvent(t, "BLE", m); };
   air().sniff = [this](const RadioPacket& p) { onPacket(p); };
   vehicle_.reset(new Vehicle(vehicleConfig_, world_));
   vehicle_->board = boards_[Robot].get();
   vehicle_->rng.seed(seed_ + 1);
   boards_[Robot]->rng.seed(seed_ + 2);
   boards_[Remote]->rng.seed(seed_ + 3);
-  vehicle_->onEvent = [this](uint64_t t, const std::string& m) { emitEvent(t, "world", m); };
+  vehicle_->onEvent = [this](uint64_t t, const std::string& m) { emitEvent(t, "场地", m); };
   vehicle_->onSample = [this](uint64_t t) { sample(t); };
   boards_[Robot]->io = vehicle_.get();
   boards_[Remote]->io = &hand_;
@@ -166,7 +165,7 @@ void Simulation::start() {
       }
     };
     b->onWarning = [this](const Board& board, const std::string& m) {
-      emitEvent(board.now(), board.name, "warning: " + m);
+      emitEvent(board.now(), board.name, "警告：" + m);
     };
   }
   sample(0);
@@ -177,7 +176,7 @@ void Simulation::runActions(uint64_t upTo) {
     Action a = actions_.front();
     actions_.erase(actions_.begin());
     nowUs_ = std::max(nowUs_, a.at);
-    if (!a.label.empty()) emitEvent(a.at, "script", a.label);
+    if (!a.label.empty()) emitEvent(a.at, "脚本", a.label);
     a.fn(*this);
   }
 }
@@ -195,7 +194,7 @@ void Simulation::stepBoard(Board& b) {
     b.sync();
     if (!b.started) {
       b.started = true;
-      emitEvent(b.clockUs, b.name, "power on: running setup() of sketch '" + b.sketch->name + "'");
+      emitEvent(b.clockUs, b.name, "上电：运行程序 '" + b.sketch->name + "' 的 setup()");
       b.sketch->setup();
     } else {
       b.sketch->loop();
@@ -204,11 +203,11 @@ void Simulation::stepBoard(Board& b) {
     if (b.loopJitterUs) b.clockUs += b.rng() % (b.loopJitterUs + 1);
   } catch (const StuckSketch& e) {
     aborted_ = true;
-    emitEvent(b.clockUs, "sim", e.what());
+    emitEvent(b.clockUs, "模拟器", e.what());
     checks_.push_back(CheckResult{false, e.what(), b.name, b.clockUs});
   } catch (const std::exception& e) {
     aborted_ = true;
-    const std::string m = b.name + ": exception escaped the sketch: " + e.what();
+    const std::string m = b.name + "：程序抛出了未捕获的异常：" + e.what();
     emitEvent(b.clockUs, b.name, m);
     checks_.push_back(CheckResult{false, m, b.name, b.clockUs});
   }
@@ -234,10 +233,10 @@ void Simulation::runUntil(double ms) {
   if (!aborted_) vehicle_->advanceTo(std::min(target, worldLimit()));
 }
 
-// --------------------------------------------------------------- tracing ---
+// --------------------------------------------------------------- 记录 ---
 void Simulation::emitEvent(uint64_t t, const std::string& source, const std::string& text) {
   events_.push_back(Event{t, source, text});
-  if (verbose) std::cout << "[" << timeText(t) << "] " << source << ": " << text << "\n";
+  if (verbose) std::cout << "[" << timeText(t) << "] " << source << "：" << text << "\n";
 }
 
 void Simulation::log(const std::string& source, const std::string& text) {
@@ -256,15 +255,15 @@ void Simulation::onPacket(const RadioPacket& p) {
   if (!r.fromRemote && r.decoded && r.frame.type == mech368::ble::Type::Status && r.delivered() &&
       p.fate == RadioPacket::Delivered)
     pendingStatus_.push_back(std::make_pair(p.deliverUs, static_cast<int>(r.frame.linear)));
-  // Report only changes of packet fate per direction, not every packet.
-  static const char* fateNames[] = {"delivered", "lost", "blocked", "corrupted", "dropped (link down)"};
+  // 每个方向只在报文结果发生变化时报告，而不是每条报文都报告。
+  static const char* fateNames[] = {"送达", "丢失", "被阻断", "损坏", "丢弃（链路已断）"};
   const int dir = r.fromRemote ? 0 : 1;
   if (lastFate_[dir] != static_cast<int>(p.fate)) {
     const bool first = lastFate_[dir] < 0;
     lastFate_[dir] = static_cast<int>(p.fate);
     if (!first || p.fate != RadioPacket::Delivered)
-      emitEvent(p.sentUs, "radio", std::string(r.fromRemote ? "remote -> robot" : "robot -> remote") +
-                                       " packets: " + fateNames[p.fate]);
+      emitEvent(p.sentUs, "无线", std::string(r.fromRemote ? "遥控器 -> 机器人" : "机器人 -> 遥控器") +
+                                       " 的报文：" + fateNames[p.fate]);
   }
 }
 
@@ -302,7 +301,7 @@ void Simulation::sample(uint64_t t) {
   samples_.push_back(s);
 }
 
-// ---------------------------------------------------------- observations ---
+// ---------------------------------------------------------- 观测 ---
 int Simulation::transitions(BoardId id, int pin, double fromMs, double toMs) const {
   const uint64_t from = toUs(fromMs), to = toUs(toMs);
   int n = 0;
@@ -395,7 +394,7 @@ void Simulation::check(bool ok, const std::string& text, const char* file, int l
   if (slash != std::string::npos) where = where.substr(slash + 1);
   where += ":" + std::to_string(line);
   checks_.push_back(CheckResult{ok, text, where, nowUs_});
-  if (verbose) std::cout << (ok ? "  PASS  " : "  FAIL  ") << text << "  (" << where << ")\n";
+  if (verbose) std::cout << (ok ? "  通过  " : "  失败  ") << text << "  (" << where << ")\n";
 }
 bool Simulation::passed() const {
   if (aborted_) return false;
@@ -404,7 +403,7 @@ bool Simulation::passed() const {
   return true;
 }
 
-// ------------------------------------------------------------- scenarios ---
+// ------------------------------------------------------------- 场景 ---
 static std::vector<ScenarioEntry>& scenarioList() {
   static std::vector<ScenarioEntry> list;
   return list;

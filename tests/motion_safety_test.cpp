@@ -5,7 +5,7 @@ using mech368::MotionSafety;
 using mech368::Packet;
 
 int main() {
-  static_assert(MotionSafety::kTimeoutMs <= 500, "watchdog exceeds 500 ms");
+  static_assert(MotionSafety::kTimeoutMs <= 500, "看门狗超过 500 ms");
   constexpr uint32_t timeout = MotionSafety::kTimeoutMs;
   MotionSafety gate;
 

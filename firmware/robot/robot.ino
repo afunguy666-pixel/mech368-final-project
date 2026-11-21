@@ -5,8 +5,8 @@
 namespace wire = mech368::ble;
 wire::Receiver receiver;
 BLEService controlService(wire::kService);
-// Extra byte detects oversized writes even if ArduinoBLE truncates to capacity.
-// Variable length preserves short writes so they can also be rejected.
+// 多留 1 字节：即使 ArduinoBLE 把超长写入截断到容量，也能识别出来。
+// 使用可变长度，过短的写入也会保留原长度，从而同样可以拒收。
 BLECharacteristic commandCharacteristic(wire::kCommand, BLEWriteWithoutResponse,
                                          wire::kFrameSize + 1);
 BLECharacteristic statusCharacteristic(wire::kStatus, BLERead | BLENotify,
@@ -25,7 +25,7 @@ void publishStatus(uint32_t now) {
 void onConnect(BLEDevice central) {
   (void)central;
   linkUp = true;
-  // Connection-scoped discriminator, NOT authentication or a persistent nonce.
+  // 按连接区分的标识，不是认证，也不是持久的一次性随机数。
   sessionCounter += static_cast<uint32_t>(micros()) | 1U;
   if (sessionCounter == 0) ++sessionCounter;
   receiver.connect(sessionCounter, millis());
@@ -36,7 +36,7 @@ void onDisconnect(BLEDevice central) {
   (void)central;
   linkUp = false;
   receiver.disconnect(millis());
-  // ArduinoBLE resumes peripheral advertising after a disconnect.
+  // 断开后 ArduinoBLE 会自动恢复外设广播。
 }
 
 void onCommand(BLEDevice central, BLECharacteristic characteristic) {
@@ -45,14 +45,14 @@ void onCommand(BLEDevice central, BLECharacteristic characteristic) {
   const int length = characteristic.valueLength();
   if (length != static_cast<int>(sizeof(bytes))) return;
   if (characteristic.readValue(bytes, sizeof(bytes)) != length) return;
-  // Handle each write event immediately: a following motion frame cannot
-  // overwrite an E-stop before the loop sees it. No BLE I/O inside this callback.
+  // 每次写入事件都立即处理：这样后面跟来的运动报文不会在主循环看到急停之前
+  // 把它覆盖掉。本回调内不做任何 BLE I/O。
   receiver.receive(bytes, sizeof(bytes), millis());
 }
 
 void setup() {
-  // TODO: Verify driver, safe electrical defaults and board wiring before
-  // implementing any motor- or battery-related I/O.
+  // TODO：在实现任何与电机或电池相关的 I/O 之前，先核实驱动器、
+  // 安全的电气默认状态和板上接线。
   pinMode(LED_BUILTIN, OUTPUT);
   bleReady = BLE.begin();
   if (!bleReady) return;
@@ -66,14 +66,14 @@ void setup() {
   commandCharacteristic.setEventHandler(BLEWritten, onCommand);
   BLE.advertise();
 }
-//setup
-//test
+// setup 结束
+// 测试
 
 void loop() {
   receiver.tick(millis());
   if (bleReady) BLE.poll();
   const uint32_t now = millis();
-  // TODO: supply a NEW local APDS-9960 gesture edge. No remote unlock exists.
+  // TODO：提供一个新的本地 APDS-9960 手势边沿。不存在遥控解锁。
   receiver.tick(now, false);
   if (linkUp && static_cast<uint32_t>(now - lastStatusAt) >= wire::kSendMs) {
     lastStatusAt = now;
@@ -81,7 +81,7 @@ void loop() {
   }
   const bool fault = !bleReady || !linkUp || !receiver.allowed(now);
   digitalWrite(LED_BUILTIN, fault ? ((now / 125U) % 2U ? HIGH : LOW) : HIGH);
-  // ALL actual motor outputs remain absent/disabled, even when allowed() is true.
-  // Future motor adapter must use receiver.linear(now)/angular(now) behind the
-  // same safety gate after wiring, electrical defaults and timing are verified.
+  // 即使 allowed() 为 true，所有实际电机输出仍然不存在/处于禁用状态。
+  // 将来的电机适配层必须在接线、电气默认状态和时序都核实之后，
+  // 在同一个安全闸门之后使用 receiver.linear(now)/angular(now)。
 }

@@ -9,8 +9,8 @@ namespace ble {
 constexpr size_t kFrameSize = 20;
 constexpr uint32_t kSendMs = 50;
 constexpr uint32_t kChallengeMs = 200;
-constexpr int16_t kMaxLinear = 1000;   // mm/s: protocol bound, NOT approved speed
-constexpr int16_t kMaxAngular = 4000;  // mrad/s: protocol bound, NOT approved speed
+constexpr int16_t kMaxLinear = 1000;   // mm/s：协议边界，不是批准的速度
+constexpr int16_t kMaxAngular = 4000;  // mrad/s：协议边界，不是批准的速度
 constexpr char kService[] = "c4130001-3680-4f01-9e10-627e70bca001";
 constexpr char kCommand[] = "c4130002-3680-4f01-9e10-627e70bca001";
 constexpr char kStatus[] = "c4130003-3680-4f01-9e10-627e70bca001";
@@ -81,13 +81,13 @@ inline bool decode(const uint8_t* p, size_t n, Frame& out) {
   return true;
 }
 
-// One instance per robot, shared by BLE callbacks and loop on the same thread.
+// 每台机器人一个实例，由同一线程上的 BLE 回调和主循环共用。
 class Receiver {
  public:
   void connect(uint32_t session, uint32_t now) {
     connected_ = session != 0; session_ = session; challenge_ = 1;
     challengeAt_ = now; hasSequence_ = false; linear_ = angular_ = 0;
-    safety_.update(now, false, Packet::None); // invalidate old motion; keep E-stop
+    safety_.update(now, false, Packet::None); // 作废旧的运动许可；保留急停
   }
   void disconnect(uint32_t now) {
     connected_ = false; linear_ = angular_ = 0;
@@ -109,7 +109,7 @@ class Receiver {
     safety_.update(now, true, f.type == Type::Stop ? Packet::EmergencyStop : Packet::Motion);
     linear_ = safety_.motionAllowed(now) ? f.linear : 0;
     angular_ = safety_.motionAllowed(now) ? f.angular : 0;
-    rotate(now); // a challenge may authorize only one accepted command
+    rotate(now); // 一个挑战码只能授权一条被接受的指令
     return true;
   }
   Frame status(uint32_t now) const {
@@ -132,7 +132,7 @@ class Receiver {
   bool connected_ = false, hasSequence_ = false;
 };
 
-// Remote waits for application acknowledgements, not just a connected radio.
+// 遥控器等待的是应用层确认，而不只是无线连接存在。
 class RemoteLink {
  public:
   void reset() { *this = RemoteLink(); }
@@ -152,7 +152,7 @@ class RemoteLink {
   Frame command(bool stop) const {
     Frame f; f.type = stop ? Type::Stop : Type::Motion;
     f.sequence = nextSequence_; f.session = session_; f.challenge = challenge_;
-    // Zero-motion bench heartbeat only. IMU mapping is deliberately not implemented.
+    // 只发送零速的台架心跳。IMU 映射有意尚未实现。
     return f;
   }
   void sent() { sent_ = true; sentSequence_ = nextSequence_++; }

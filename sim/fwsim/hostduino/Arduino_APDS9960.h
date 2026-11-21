@@ -1,5 +1,5 @@
-// Host stand-in for Arduino_APDS9960 (gesture/proximity/colour sensor).
-// Gestures and proximity are injected by the scenario script.
+// Arduino_APDS9960（手势/接近/颜色传感器）的替身。
+// 手势和接近度由场景脚本注入。
 #ifndef FWSIM_ARDUINO_APDS9960_H
 #define FWSIM_ARDUINO_APDS9960_H
 
@@ -18,7 +18,7 @@ class APDS9960 {
   int readColor(int& r, int& g, int& b) { r = g = b = 0; return 1; }
   int readColor(int& r, int& g, int& b, int& c) { r = g = b = c = 0; return 1; }
   int proximityAvailable() { return 1; }
-  int readProximity();  // 0 = close, 255 = far (as the real library)
+  int readProximity();  // 0 = 近，255 = 远（与真实库一致）
   void setGestureSensitivity(uint8_t) {}
   void setInterruptPin(int) {}
   bool setLEDBoost(uint8_t) { return true; }
