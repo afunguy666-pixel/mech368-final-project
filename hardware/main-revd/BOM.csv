@@ -1,0 +1,72 @@
+﻿Reference,Value / part,Footprint,Population,Side,Sites,Pad nets,Assembly notes,Default sites for 5 boards,Supply group
+C1,470u 16V,Capacitor_THT:CP_Radial_D8.0mm_P3.50mm,FIT,top,1,1=VSW | 2=GND,"Radial 470 uF, >=16 V, diameter <=8 mm, pitch 3.5 mm",5,Procure or existing bench stock
+C2,100n,Capacitor_SMD:C_0805_2012Metric,FIT,top,1,1=VSW | 2=GND,,5,Procure or existing bench stock
+C3,DNP 220u,Capacitor_THT:CP_Radial_D6.3mm_P2.50mm,DNP,top,1,1=VIN | 2=GND,,0,Optional / DNP
+C4,100n,Capacitor_SMD:C_0805_2012Metric,FIT,top,1,1=VBAT_ADC | 2=GND,,5,Procure or existing bench stock
+C5,100n,Capacitor_SMD:C_0805_2012Metric,FIT,top,1,1=3V3 | 2=GND,,5,Procure or existing bench stock
+C6,10u 25V,Capacitor_SMD:C_0805_2012Metric,FIT,top,1,1=VIN | 2=GND,,5,Procure or existing bench stock
+C7,100n,Capacitor_SMD:C_0805_2012Metric,FIT,top,1,1=3V3 | 2=GND,,5,Procure or existing bench stock
+C8,DNP 100p,Capacitor_SMD:C_0805_2012Metric,DNP,top,1,1=ELA | 2=GND,,0,Optional / DNP
+C9,DNP 100p,Capacitor_SMD:C_0805_2012Metric,DNP,top,1,1=ELB | 2=GND,,0,Optional / DNP
+C10,DNP 100p,Capacitor_SMD:C_0805_2012Metric,DNP,top,1,1=ERA | 2=GND,,0,Optional / DNP
+C11,DNP 100p,Capacitor_SMD:C_0805_2012Metric,DNP,top,1,1=ERB | 2=GND,,0,Optional / DNP
+C12,100n,Capacitor_SMD:C_0805_2012Metric,FIT,top,1,1=3V3 | 2=GND,,5,Procure or existing bench stock
+C13,100n,Capacitor_SMD:C_0805_2012Metric,FIT,top,1,1=3V3 | 2=GND,,5,Procure or existing bench stock
+C14,100n,Capacitor_SMD:C_0805_2012Metric,FIT,top,1,1=3V3 | 2=GND,,5,Procure or existing bench stock
+C15,DNP 10n,Capacitor_SMD:C_0805_2012Metric,DNP,bottom,1,1=UVS | 2=GND,"Optional UVS filter, X7R >=10 V; fit only if motor start/PWM transients falsely clear the latch (tau ~100 us)",0,Optional / DNP
+D1,POWER,LED_THT:LED_D3.0mm,FIT,top,1,1=GND | 2=LED1,,5,Procure or existing bench stock
+D2,LOW BAT,LED_THT:LED_D3.0mm,FIT,top,1,1=GND | 2=LED2,Visible low-battery indication,5,Procure or existing bench stock
+D3,LINK,LED_THT:LED_D3.0mm,FIT,top,1,1=GND | 2=LED3,Visible BLE link / timeout indicator,5,Procure or existing bench stock
+D4,ESTOP,LED_THT:LED_D3.0mm,FIT,top,1,1=GND | 2=LED4,Visible emergency stop indicator,5,Procure or existing bench stock
+D5,PMEG2010ER K1,Diode_SMD:Nexperia_CFP3_SOD-123W,FIT,top,1,1=VIN | 2=REG5V,Nexperia PMEG2010ER; bar = pad 1 = VIN (east); anode on REG5V ahead of F1,5,Procure or existing bench stock
+F1,1812L150/16DR 1.5A,Fuse:Fuse_1812_4532Metric,FIT,top,1,1=REG5V | 2=VSW,Littelfuse 1812L150/16DR; downstream PPTC,5,Procure or existing bench stock
+H1,MountingHole_3.2mm_M3,MountingHole:MountingHole_3.2mm_M3,PCB FEATURE,top,1,,,0,PCB feature
+H2,MountingHole_3.2mm_M3,MountingHole:MountingHole_3.2mm_M3,PCB FEATURE,top,1,,,0,PCB feature
+H3,MountingHole_3.2mm_M3,MountingHole:MountingHole_3.2mm_M3,PCB FEATURE,top,1,,,0,PCB feature
+H4,MountingHole_3.2mm_M3,MountingHole:MountingHole_3.2mm_M3,PCB FEATURE,top,1,,,0,PCB feature
+J1,XH,Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical,FIT,top,1,1=REG5V | 2=GND | 3=RAW_AA,,5,Procure or existing bench stock
+J3,PH,Connector_JST:JST_PH_B6B-PH-K_1x06_P2.00mm_Vertical,FIT,top,1,1=LPLUS | 2=LMINUS | 3=GND | 4=3V3 | 5=ELA | 6=ELB,,5,Procure or existing bench stock
+J4,PH,Connector_JST:JST_PH_B6B-PH-K_1x06_P2.00mm_Vertical,FIT,top,1,1=RPLUS | 2=RMINUS | 3=GND | 4=3V3 | 5=ERA | 6=ERB,,5,Procure or existing bench stock
+J5,XH,Connector_JST:JST_XH_B8B-XH-A_1x08_P2.50mm_Vertical,FIT,top,1,1=3V3 | 2=GND | 3=IRK1 | 4=L2 | 5=L1 | 6=LC | 7=R1S | 8=R2S,JST XH; pad 1 marked on board. 8 poles / XHP-8,5,Procure or existing bench stock
+J6,XH,Connector_JST:JST_XH_B6B-XH-A_1x06_P2.50mm_Vertical,FIT,top,1,1=VSW | 2=3V3 | 3=GND | 4=IRK2 | 5=OBSL | 6=OBSR,JST XH; pad 1 marked on board. 6 poles / XHP-6,5,Procure or existing bench stock
+J7,I2C,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,FIT,top,1,1=3V3 | 2=GND | 3=SDA | 4=SCL,,5,Procure or existing bench stock
+J9,3297 JP5,Connector_PinSocket_2.54mm:PinSocket_1x08_P2.54mm_Vertical,FIT,top,1,1=VSW | 2=GND | 3=FAULT | 4=RP | 5=RD | 6=SLEEP | 7=LD | 8=LP,"Adafruit #3297 long socket, 1x8",5,Procure or existing bench stock
+J10,3297 outputs/sense,Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical,FIT,top,1,1=unconnected-(J10-BSEN-Pad1) | 2=unconnected-(J10-ASEN-Pad2) | 3=RPLUS | 4=RMINUS | 5=LMINUS | 6=LPLUS,"Adafruit #3297 short socket, 1x6",5,Procure or existing bench stock
+Q1,AO3400A,Package_TO_SOT_SMD:SOT-23,FIT,top,1,1=GATE | 2=GND | 3=IRK,,5,Procure or existing bench stock
+R1,22k 1%,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,FIT,top,1,1=RAW_AA | 2=VBAT_ADC,"BOJACK axial, top, 10.16 mm pitch, 0.8 mm finished drill. 22 kOhm upper divider, 1%",5,BOJACK kit
+R2,10k 1%,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,FIT,top,1,1=VBAT_ADC | 2=GND,"BOJACK axial, top, 10.16 mm pitch, 0.8 mm finished drill. 10 kOhm lower divider, 1%",5,BOJACK kit
+R3,10k,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,FIT,top,1,1=SLEEP | 2=GND,"BOJACK axial, top, 10.16 mm pitch, 0.8 mm finished drill. ",5,BOJACK kit
+R4,100k,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,FIT,top,1,1=GATE | 2=GND,"BOJACK axial, top, 10.16 mm pitch, 0.8 mm finished drill. ",5,BOJACK kit
+R5,100R,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,FIT,top,1,1=IREN | 2=GATE,"BOJACK axial, top, 10.16 mm pitch, 0.8 mm finished drill. ",5,BOJACK kit
+R6,2.2k,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,FIT,top,1,1=VSW | 2=LED1,"BOJACK axial, top, 10.16 mm pitch, 0.8 mm finished drill. ",5,BOJACK kit
+R7,330R,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,FIT,top,1,1=LOW | 2=LED2,"BOJACK axial, top, 10.16 mm pitch, 0.8 mm finished drill. ",5,BOJACK kit
+R8,330R,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,FIT,top,1,1=LINK | 2=LED3,"BOJACK axial, top, 10.16 mm pitch, 0.8 mm finished drill. ",5,BOJACK kit
+R9,330R,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,FIT,top,1,1=ESTOP | 2=LED4,"BOJACK axial, top, 10.16 mm pitch, 0.8 mm finished drill. ",5,BOJACK kit
+R10,DNP 10k,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,DNP,top,1,1=ELA | 2=3V3,"Optional encoder pull-up; BOJACK axial, top, 10.16 mm pitch, 0.8 mm finished drill. ",0,Optional BOJACK kit
+R11,DNP 10k,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,DNP,top,1,1=ELB | 2=3V3,"Optional encoder pull-up; BOJACK axial, top, 10.16 mm pitch, 0.8 mm finished drill. ",0,Optional BOJACK kit
+R12,DNP 10k,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,DNP,top,1,1=ERA | 2=3V3,"Optional encoder pull-up; BOJACK axial, top, 10.16 mm pitch, 0.8 mm finished drill. ",0,Optional BOJACK kit
+R13,DNP 10k,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,DNP,top,1,1=ERB | 2=3V3,"Optional encoder pull-up; BOJACK axial, top, 10.16 mm pitch, 0.8 mm finished drill. ",0,Optional BOJACK kit
+R14,10k,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,FIT,top,1,1=3V3 | 2=FAULT,"BOJACK axial, top, 10.16 mm pitch, 0.8 mm finished drill. ",5,BOJACK kit
+R15,110k 0.1%,Resistor_SMD:R_0805_2012Metric,FIT,top,1,1=VSW | 2=UVS,"110 kOhm upper supervisor divider, 0.1%",5,Procure or existing bench stock
+R16,11.0k 0.1%,Resistor_SMD:R_0805_2012Metric,FIT,top,1,1=UVS | 2=GND,"11.0 kOhm lower supervisor divider, 0.1%; trip ~4.455 V",5,Procure or existing bench stock
+R17,10k,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,FIT,top,1,1=3V3 | 2=CLR,"BOJACK axial, top, 10.16 mm pitch, 0.8 mm finished drill. ",5,BOJACK kit
+R18,10k,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,FIT,top,1,1=ARM | 2=GND,"BOJACK axial, top, 10.16 mm pitch, 0.8 mm finished drill. ",5,BOJACK kit
+SB1,0R fitted,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,FIT,top,1,1=IRK | 2=IRK1,"BOJACK axial, top, 10.16 mm pitch, 0.8 mm finished drill. ",5,BOJACK kit
+SB2,0R fitted,Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal,FIT,top,1,1=IRK | 2=IRK2,"BOJACK axial, top, 10.16 mm pitch, 0.8 mm finished drill. ",5,BOJACK kit
+SW2,MODE,Button_Switch_THT:SW_PUSH_6mm,FIT,top,1,1=BTN | 2=GND,,5,Procure or existing bench stock
+TP1,VSW,TestPoint:TestPoint_Pad_D1.5mm,PCB FEATURE,top,1,1=VSW,,0,PCB feature
+TP2,VIN,TestPoint:TestPoint_Pad_D1.5mm,PCB FEATURE,top,1,1=VIN,,0,PCB feature
+TP3,3V3,TestPoint:TestPoint_Pad_D1.5mm,PCB FEATURE,top,1,1=3V3,,0,PCB feature
+TP4,IRK,TestPoint:TestPoint_Pad_D1.5mm,PCB FEATURE,top,1,1=IRK,,0,PCB feature
+TP5,SLEEP,TestPoint:TestPoint_Pad_D1.5mm,PCB FEATURE,top,1,1=SLEEP,,0,PCB feature
+TP6,FAULT,TestPoint:TestPoint_Pad_D1.5mm,PCB FEATURE,top,1,1=FAULT,,0,PCB feature
+TP7,VBAT_ADC,TestPoint:TestPoint_Pad_D1.5mm,PCB FEATURE,top,1,1=VBAT_ADC,,0,PCB feature
+TP8,GND,TestPoint:TestPoint_Pad_D1.5mm,PCB FEATURE,top,1,1=GND,,0,PCB feature
+TP9,GND,TestPoint:TestPoint_Pad_D1.5mm,PCB FEATURE,top,1,1=GND,,0,PCB feature
+U1,Nano 33 BLE Sense Rev2,Module:Arduino_Nano,FIT,top,1,1=LINK | 2=ESTOP | 3=unconnected-(U1-RESET-Pad3) | 4=GND | 5=ELA | 6=ELB | 7=ERA | 8=ERB | 9=LP | 10=LD | 11=RD | 12=RP | 13=ARM | 14=IREN | 15=BTN | 16=LOW | 17=3V3 | 18=unconnected-(U1-AREF-Pad18) | 19=S0 | 20=S1 | 21=S2 | 22=ADC | 23=SDA | 24=SCL | 25=FAULT | 26=VBAT_ADC | 27=unconnected-(U1-VUSB-Pad27) | 28=unconnected-(U1-RESET-Pad28) | 29=GND | 30=VIN,"Arduino ABX00069 or headered ABX00070; 2 x 1x15 sockets, 2.54 mm",5,Plug-in Arduino; two sockets separately
+U3,74HC4051D,Package_SO:SOIC-16_3.9x9.9mm_P1.27mm,FIT,top,1,1=R2S | 2=OBSR | 3=ADC | 4=LATCHQ | 5=OBSL | 6=GND | 7=GND | 8=GND | 9=S2 | 10=S1 | 11=S0 | 12=R1S | 13=L2 | 14=L1 | 15=LC | 16=3V3,,5,Procure or existing bench stock
+U4,TPS3808G01DBVR,Package_TO_SOT_SMD:SOT-23-6,FIT,top,1,1=CLR | 2=GND | 3=3V3 | 4=unconnected-(U4-CT-Pad4) | 5=UVS | 6=3V3,,5,Procure or existing bench stock
+U5,74HC74D,Package_SO:SOIC-14_3.9x8.7mm_P1.27mm,FIT,top,1,1=CLR | 2=3V3 | 3=ARM | 4=3V3 | 5=LATCHQ | 6=unconnected-(U5-1nQ-Pad6) | 7=GND | 8=unconnected-(U5-2nQ-Pad8) | 9=unconnected-(U5-2Q-Pad9) | 10=3V3 | 11=GND | 12=GND | 13=3V3 | 14=3V3,,5,Procure or existing bench stock
+U6,SN74LVC1G08DBVR,Package_TO_SOT_SMD:SOT-23-5,FIT,top,1,1=ARM | 2=LATCHQ | 3=GND | 4=SLEEP | 5=3V3,,5,Procure or existing bench stock
+J15,Perfboard 2.54,Connector_PinHeader_2.54mm:PinHeader_1x08_P2.54mm_Vertical,DNP,bottom,1,1=3V3 | 2=GND | 3=IRK1 | 4=L2 | 5=L1 | 6=LC | 7=R1S | 8=R2S,Optional pin header; plated holes also accept insulated leads. Use corresponding J5/J6 pin order.,0,Optional / DNP
+J16,Perfboard 2.54,Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical,DNP,bottom,1,1=VSW | 2=3V3 | 3=GND | 4=IRK2 | 5=OBSL | 6=OBSR,Optional pin header; plated holes also accept insulated leads. Use corresponding J5/J6 pin order.,0,Optional / DNP

@@ -3,3 +3,10 @@
 *.hex
 *.bin
 *.o
+
+# KiCad local files
+*.kicad_prl
+*-backups/
+fp-info-cache
+_autosave-*
+*.lck
