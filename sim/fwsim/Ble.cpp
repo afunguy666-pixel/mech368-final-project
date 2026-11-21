@@ -1,4 +1,4 @@
-// 模拟的 ArduinoBLE 协议栈，以及模拟开发板之间的无线信道。
+// Simulated ArduinoBLE stack and radio channel between simulated boards.
 #include "Runtime.h"
 #include <algorithm>
 #include <cstdio>
@@ -60,8 +60,8 @@ void Air::dropLink(Connection& c, uint64_t now, const std::string& why) {
   if (!c.physical) return;
   c.physical = false;
   c.lostAt = now;
-  note(now, "无线：连接 " + std::to_string(c.id) + " 丢失（" + why +
-                "）；双方要到监督超时后才会察觉");
+  note(now, "radio: connection " + std::to_string(c.id) + " lost (" + why +
+                "); each side notices after the supervision timeout");
   BleEvent e{BleEvent::Disconnected, now + config.supervisionTimeoutUs, c.id, "", {}};
   Board* central = board(c.central);
   Board* peripheral = board(c.peripheral);
@@ -86,15 +86,15 @@ void Air::closeByLocal(Connection& c, Board& self, uint64_t now) {
     c.physical = false;
     c.lostAt = now;
   }
-  note(now, "无线：" + self.name + " 关闭了连接 " + std::to_string(c.id));
+  note(now, "radio: " + self.name + " closed connection " + std::to_string(c.id));
 }
 
 void Air::setLinkAvailable(bool available, uint64_t now) {
   if (config.linkAvailable == available) return;
   config.linkAvailable = available;
-  note(now, available ? "无线：链路恢复可用" : "无线：链路不可用（超出范围）");
+  note(now, available ? "radio: link available again" : "radio: link unavailable (out of range)");
   if (!available)
-    for (auto& c : connections) dropLink(c, now, "超出范围");
+    for (auto& c : connections) dropLink(c, now, "out of range");
 }
 
 void Air::boardPoweredOff(Board& b, uint64_t now) {
@@ -104,7 +104,7 @@ void Air::boardPoweredOff(Board& b, uint64_t now) {
     if (c.central != b.id && c.peripheral != b.id) continue;
     if (c.central == b.id) c.centralUp = false;
     else c.peripheralUp = false;
-    dropLink(c, now, b.name + " 断电");
+    dropLink(c, now, b.name + " powered off");
   }
 }
 
@@ -129,7 +129,7 @@ void Air::transmit(Connection& c, bool fromCentral, const std::string& uuid,
     uint64_t at = now + config.latencyUs;
     if (config.jitterUs) at += static_cast<uint64_t>(u(rng) * config.jitterUs);
     uint64_t& last = fromCentral ? c.lastDeliverToPeripheral : c.lastDeliverToCentral;
-    at = std::max(at, last);  // BLE 链路按顺序送达
+    at = std::max(at, last);  // a BLE link delivers in order
     last = at;
     p.deliverUs = at;
     BleEvent e{kind, at, c.id, uuid, bytes};
@@ -181,7 +181,7 @@ void Air::process(Board& b) {
           b.ble.handlers[BLEDisconnected](deviceFor(b.id, peer, c->id));
         if (!isCentral && b.ble.advertiseWanted && b.ble.connectable &&
             !activeFor(b.id, false)) {
-          b.ble.advertising = true;  // 断开后 ArduinoBLE 会重新广播
+          b.ble.advertising = true;  // ArduinoBLE re-advertises after disconnect
           b.ble.advertisingSince = b.clockUs;
         }
         break;
@@ -294,7 +294,7 @@ int BLELocalDevice::advertise() {
   if (!air().activeFor(b.id, false) && !b.ble.advertising) {
     b.ble.advertising = true;
     b.ble.advertisingSince = b.now();
-    air().note(b.now(), b.name + "：开始广播");
+    air().note(b.now(), b.name + ": advertising");
   }
   return 1;
 }
@@ -391,9 +391,9 @@ bool BLEDevice::connect() {
   Board& b = cur();
   if (connected()) return true;
   Board* p = air().board(s_->peer);
-  b.spend(air().blocking(air().config.connectUs));  // 在 ArduinoBLE 内部阻塞
+  b.spend(air().blocking(air().config.connectUs));  // blocking inside ArduinoBLE
   if (!p || !air().reachable(b, *p) || !p->ble.advertising || !p->ble.connectable) {
-    air().note(b.now(), b.name + "：connect() 失败");
+    air().note(b.now(), b.name + ": connect() failed");
     return false;
   }
   Connection c;
@@ -406,15 +406,15 @@ bool BLEDevice::connect() {
   s_->discovered.clear();
   air().post(*p, BleEvent{BleEvent::Connected, b.now(), c.id, "", {}});
   air().post(b, BleEvent{BleEvent::Connected, b.now(), c.id, "", {}});
-  air().note(b.now(), "无线：" + b.name + " 已连接到 " + p->name + "（连接 " +
-                          std::to_string(c.id) + "）");
+  air().note(b.now(), "radio: " + b.name + " connected to " + p->name + " (connection " +
+                          std::to_string(c.id) + ")");
   return true;
 }
 
 static bool linkAlive(Board& b, const DeviceState& d) {
   Connection* c = air().connection(d.conn);
   if (!c || !(c->central == b.id ? c->centralUp : c->peripheralUp)) return false;
-  if (!c->physical) {  // 请求在 BLE 库内部超时
+  if (!c->physical) {  // the request times out inside the BLE library
     b.spend(static_cast<uint64_t>(b.ble.timeoutMs) * 1000ULL);
     return false;
   }

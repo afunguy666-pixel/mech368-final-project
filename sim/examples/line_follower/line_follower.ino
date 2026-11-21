@@ -1,14 +1,16 @@
-// 仅供模拟器演示 —— 不是机器人固件，也不属于课程构建的一部分。
-// 演示控制电机、编码器、巡线传感器、超声波传感器、APDS 手势、IMU 和电池分压的
-// 普通 Arduino 代码如何在固件模拟器中运行。引脚与 sim/vehicles/example.vehicle
-// 一致（均为占位值）。本程序**没有**使用 BLE 链路或 MotionSafety 闸门；
-// 真正的自主模式必须和机器人共用同一个经过安全闸门的输出通路。
+// SIMULATOR DEMO ONLY - not robot firmware and not part of the course build.
+// Shows how ordinary Arduino code for motors, encoders, line sensors, an
+// ultrasonic sensor, APDS gestures, the IMU and a battery divider runs in the
+// firmware simulator. Pins match sim/vehicles/example.vehicle (placeholders).
+// It does NOT use the BLE link or the MotionSafety gate; real autonomous modes
+// must share the robot's single safety-gated output path.
 //
-// 行为：等待向上的手势后开始，用编码器速度闭环沿胶带巡线；前方 20 cm 内有障碍物
-// 就停车；向下的手势停车；电量低时点亮红色 LED。
-// 建图：在 Serial 上发送 "pose X Y 航向角(度)" 给出起始位姿。之后程序跟踪自身位姿
-// （编码器测距离 + 陀螺仪测航向，等待期间校准陀螺仪零偏），
-// 并每 150 ms 打印一次 "MAP x y 温度"。
+// Behaviour: wait for an UP gesture, follow the tape line with encoder speed
+// control, stop for obstacles closer than 20 cm, stop on a DOWN gesture, and
+// light the red LED when the battery is low.
+// Mapping: send "pose X Y HEADING_DEG" on Serial to give the starting pose.
+// The sketch then tracks its pose (encoder distance + gyro heading, gyro bias
+// calibrated while waiting) and prints "MAP x y tempC" every 150 ms.
 #include <Arduino.h>
 #include <Arduino_APDS9960.h>
 #include <Arduino_BMI270_BMM150.h>
@@ -20,8 +22,8 @@ const int LINE_LEFT = A0, LINE_CENTRE = A1, LINE_RIGHT = A2;
 const int TRIG = D10, ECHO = D11, BATTERY = A7;
 
 const float WHEEL_RADIUS = 0.020f, TRACK = 0.10f;
-const float COUNTS_PER_REV = 720.0f;   // 360 ppr，取 A 相的上升沿和下降沿
-const float MAX_WHEEL_SPEED = 30.0f;   // rad/s，用于前馈项
+const float COUNTS_PER_REV = 720.0f;   // 360 ppr, both edges of channel A
+const float MAX_WHEEL_SPEED = 30.0f;   // rad/s, for the feed-forward term
 const float CRUISE = 0.25f;            // m/s
 const float STOP_DISTANCE = 0.20f, CLEAR_DISTANCE = 0.30f;
 const float LOW_BATTERY_VOLTS = 6.8f;
@@ -34,23 +36,23 @@ enum State { WAITING, FOLLOWING, BLOCKED, STOPPED };
 State state = WAITING;
 const char* stateName(State s) {
   switch (s) {
-    case WAITING: return "等待";
-    case FOLLOWING: return "巡线";
-    case BLOCKED: return "受阻";
-    case STOPPED: return "停止";
+    case WAITING: return "waiting";
+    case FOLLOWING: return "following";
+    case BLOCKED: return "blocked";
+    case STOPPED: return "stopped";
   }
   return "?";
 }
 
-float targetLeft = 0, targetRight = 0;  // 车轮 rad/s
+float targetLeft = 0, targetRight = 0;  // wheel rad/s
 float integralLeft = 0, integralRight = 0;
 long lastLeftCount = 0, lastRightCount = 0;
 float linePosition = 0, lastLinePosition = 0;
-float obstacle = -1;                     // 米，-1 = 量程内没有物体
+float obstacle = -1;                     // metres, -1 = nothing in range
 float odoX = 0, odoY = 0, odoHeading = 0, gyroHeading = 0;
 bool lowBattery = false;
-bool mapping = false;                    // 由串口命令 "pose" 设置
-float poseX = 0, poseY = 0, poseHeading = 0;  // 编码器测距离 + 陀螺仪测航向
+bool mapping = false;                    // set by the "pose" serial command
+float poseX = 0, poseY = 0, poseHeading = 0;  // encoder distance + gyro heading
 float gyroBias = 0, biasSum = 0;
 long biasCount = 0;
 unsigned long lastMap = 0, lastGyroUs = 0;
@@ -64,27 +66,27 @@ void drive(int pwmPin, int dirPin, float duty) {
 
 void setState(State next) {
   if (next == state) return;
-  Serial.print("状态：");
+  Serial.print("state: ");
   Serial.print(stateName(state));
   Serial.print(" -> ");
   Serial.println(stateName(next));
   state = next;
-  digitalWrite(LEDG, state == FOLLOWING ? LOW : HIGH);  // RGB LED 为低电平点亮
+  digitalWrite(LEDG, state == FOLLOWING ? LOW : HIGH);  // RGB LEDs are active low
   digitalWrite(LEDB, state == WAITING ? LOW : HIGH);
 }
 
-// 加权的线位置：+1 = 线在左传感器下方，-1 = 在右侧。
+// Weighted line position: +1 = line under the left sensor, -1 = right.
 void readLine() {
   const float left = analogRead(LINE_LEFT) / 1023.0f;
   const float centre = analogRead(LINE_CENTRE) / 1023.0f;
   const float right = analogRead(LINE_RIGHT) / 1023.0f;
-  const float floorLevel = 0.15f;  // 地面上约 0.4 V
+  const float floorLevel = 0.15f;  // ~0.4 V over the floor
   const float l = max(0.0f, left - floorLevel), c = max(0.0f, centre - floorLevel),
               r = max(0.0f, right - floorLevel);
   const float sum = l + c + r;
   lastLinePosition = linePosition;
   if (sum > 0.05f) linePosition = (l - r) / sum;
-  else linePosition = linePosition >= 0 ? 1.5f : -1.5f;  // 丢线：继续朝线的方向转
+  else linePosition = linePosition >= 0 ? 1.5f : -1.5f;  // lost: keep turning toward it
 }
 
 void readSonar() {
@@ -93,7 +95,7 @@ void readSonar() {
   digitalWrite(TRIG, HIGH);
   delayMicroseconds(10);
   digitalWrite(TRIG, LOW);
-  const unsigned long echo = pulseIn(ECHO, HIGH, 12000UL);  // 最远约 2 m
+  const unsigned long echo = pulseIn(ECHO, HIGH, 12000UL);  // ~2 m max
   obstacle = echo ? echo * 343.0f / 2.0f / 1e6f : -1.0f;
 }
 
@@ -149,10 +151,10 @@ void setup() {
   drive(RIGHT_PWM, RIGHT_DIR, 0);
   attachInterrupt(digitalPinToInterrupt(LEFT_ENC_A), leftEncoderIsr, CHANGE);
   attachInterrupt(digitalPinToInterrupt(RIGHT_ENC_A), rightEncoderIsr, CHANGE);
-  if (!IMU.begin()) Serial.println("IMU 初始化失败");
-  if (!APDS.begin()) Serial.println("APDS 初始化失败");
-  if (!HS300x.begin()) Serial.println("HS300x 初始化失败");
-  Serial.println("巡线程序就绪：向上挥手开始，向下挥手停止");
+  if (!IMU.begin()) Serial.println("IMU init failed");
+  if (!APDS.begin()) Serial.println("APDS init failed");
+  if (!HS300x.begin()) Serial.println("HS300x init failed");
+  Serial.println("line follower ready: swipe UP to start, DOWN to stop");
 }
 
 void loop() {
@@ -161,15 +163,15 @@ void loop() {
   if (APDS.gestureAvailable()) {
     const int g = APDS.readGesture();
     if (g == GESTURE_UP && (state == WAITING || state == STOPPED)) {
-      Serial.println("手势 UP：开始");
+      Serial.println("gesture UP: started");
       setState(FOLLOWING);
     } else if (g == GESTURE_DOWN) {
-      Serial.println("手势 DOWN：停止");
+      Serial.println("gesture DOWN: stopping");
       setState(STOPPED);
     }
   }
 
-  // "pose X Y 航向角(度)"：已知的起始位姿；收到后开启建图输出。
+  // "pose X Y HEADING_DEG": the known starting pose; enables mapping output.
   if (Serial.available() > 0) {
     String line = Serial.readStringUntil('\n');
     line.trim();
@@ -181,7 +183,7 @@ void loop() {
         poseY = line.substring(a + 1, b).toFloat();
         poseHeading = radians(line.substring(b + 1).toFloat());
         mapping = true;
-        Serial.println("已开启建图");
+        Serial.println("mapping enabled");
       }
     }
   }
@@ -189,16 +191,16 @@ void loop() {
   float gx, gy, gz;
   if (IMU.gyroscopeAvailable()) {
     IMU.readGyroscope(gx, gy, gz);
-    // 按距上次读取的实际时间积分，而不是固定的 10 ms：
-    // 阻塞调用（读温度、pulseIn）会让主循环跳过样本。
+    // Integrate over the real time since the last read, not a fixed 10 ms:
+    // blocking calls (temperature read, pulseIn) make the loop skip samples.
     const unsigned long nowUs = micros();
     const float dt = lastGyroUs ? (nowUs - lastGyroUs) / 1e6f : 0.01f;
     lastGyroUs = nowUs;
-    if (state == WAITING) {  // 静止时：估计陀螺仪零偏
+    if (state == WAITING) {  // standing still: estimate the gyro bias
       biasSum += gz;
       gyroBias = biasSum / ++biasCount;
     } else {
-      gyroHeading += (gz - gyroBias) * dt;  // 度
+      gyroHeading += (gz - gyroBias) * dt;  // degrees
       poseHeading += radians((gz - gyroBias) * dt);
     }
   }
@@ -207,12 +209,12 @@ void loop() {
     lastSonar = now;
     readSonar();
     if (state == FOLLOWING && obstacle > 0 && obstacle < STOP_DISTANCE) {
-      Serial.print("前方障碍物距离 ");
+      Serial.print("obstacle at ");
       Serial.print(obstacle * 100, 1);
-      Serial.println(" cm：停车");
+      Serial.println(" cm: stopping");
       setState(BLOCKED);
     } else if (state == BLOCKED && (obstacle < 0 || obstacle > CLEAR_DISTANCE)) {
-      Serial.println("前方已畅通：继续");
+      Serial.println("path clear: resuming");
       setState(FOLLOWING);
     }
   }
@@ -252,7 +254,7 @@ void loop() {
     const float volts = analogRead(BATTERY) * 3.3f / 1023.0f * 3.0f;
     if (!lowBattery && volts < LOW_BATTERY_VOLTS) {
       lowBattery = true;
-      Serial.print("电量低：");
+      Serial.print("LOW BATTERY: ");
       Serial.print(volts, 2);
       Serial.println(" V");
       digitalWrite(LEDR, LOW);
@@ -262,17 +264,17 @@ void loop() {
   if (now - lastReport >= 1000) {
     lastReport = now;
     Serial.print(stateName(state));
-    Serial.print(" 里程计=(");
+    Serial.print(" odo=(");
     Serial.print(odoX, 3);
     Serial.print(", ");
     Serial.print(odoY, 3);
-    Serial.print(") m 航向 编码器=");
+    Serial.print(") m heading enc=");
     Serial.print(degrees(odoHeading), 1);
-    Serial.print(" 陀螺仪=");
+    Serial.print(" gyro=");
     Serial.print(gyroHeading, 1);
-    Serial.print(" 度 赛道=");
+    Serial.print(" deg line=");
     Serial.print(linePosition, 2);
-    Serial.print(" 超声波=");
+    Serial.print(" sonar=");
     Serial.println(obstacle, 2);
   }
 }

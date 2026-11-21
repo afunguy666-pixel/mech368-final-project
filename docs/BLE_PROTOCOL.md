@@ -1,87 +1,102 @@
-# 第一阶段 BLE 协议与台架验证
+# Phase 1 BLE protocol and bench validation
 
-## 范围与要求
+[中文版 / Chinese](BLE_PROTOCOL.zh-CN.md)
 
-来源：`mech368-final-project.pdf`，课程讲义第 3 页（阅读于 2026-11-20）。
-两块 Nano 33 BLE Sense Rev2 用 ArduinoBLE 通信。课程要求：最多 500 ms 内没有有效报文时
-电机速度归零；两端都要有闪烁的断链指示；遥控器发出的急停要一直锁存，
-直到在机器人的 APDS-9960 上做出手势。本阶段实现了通信和现有的软件运动闸门，
-但**没有**实现或验证物理停车、IMU 转向、实体急停开关或 APDS-9960 恢复。
+## Scope and requirements
 
-机器人 = 外设/服务端；遥控器 = 中心设备/客户端。服务 UUID 为
-`c4130001-3680-4f01-9e10-627e70bca001`。指令特征值把 `0001` 换成 `0002`，
-属性为 Write Without Response；状态特征值用 `0003`，属性为 Read + Notify。
-机器人每 50 ms 发送一次状态。遥控器在收到状态后发送指令（每条有效状态回复一条，即每 50 ms 一条）。
-程序中没有使用 `delay()`、等待 USB、等待已连接设备的循环，也没有阻塞读取用户输入。
-指令和通知都能装进默认的 20 字节 ATT 载荷。
+Source: `mech368-final-project.pdf`, course handout, page 3 (read 2026-11-20).
+Two Nano 33 BLE Sense Rev2 boards communicate using ArduinoBLE. The course
+requires zero motor speeds within at most 500 ms without a valid packet,
+flashing disconnect indicators at both ends, and a remote E-stop latched until
+an APDS-9960 gesture on the robot. This phase implements communication and the
+existing software motion gate. It does NOT implement or verify physical stops,
+IMU steering, a physical E-stop switch, or APDS-9960 recovery.
 
-## 报文格式（版本 1）
+Robot = peripheral/server; remote = central/client. Service UUID
+`c4130001-3680-4f01-9e10-627e70bca001`. Command characteristic uses `0002`
+in place of `0001`, Write Without Response; status uses `0003`, Read + Notify.
+Robot sends status every 50 ms. Remote replies with one command to each valid
+status notification (so one every 50 ms). No application `delay()`, USB wait, connected-device wait
+loop, or blocking read of user input is used. Commands and notifications fit
+the default 20-byte ATT payload.
 
-所有多字节整数都明确采用小端序。不使用结构体强制转换、浮点数、打包编译指令或本机字节序序列化。
-报文恰好 20 字节：
+## Wire format (version 1)
 
-| 偏移 | 字节数 | 字段 |
+All multibyte integers are explicitly little-endian. No struct casting, floats,
+packing pragmas, or native-endian serialization. Exactly 20 bytes:
+
+| Offset | Bytes | Field |
 | --- | --- | --- |
-| 0 | 2 | 魔数 `36 8b` |
-| 2 | 1 | 版本 `01` |
-| 3 | 1 | 类型：1 运动，2 急停，3 状态 |
-| 4 | 2 | uint16 序列号；状态报文回显最后接受的指令序列号 |
-| 6 | 4 | uint32 连接会话号，非零 |
-| 10 | 2 | int16 线速度，单位 mm/s；状态报文在此放标志位 |
-| 12 | 2 | int16 角速度，单位 mrad/s；状态报文要求为零 |
-| 14 | 4 | uint32 机器人下发的挑战码，非零 |
-| 18 | 2 | 对第 0..17 字节的 CRC-16/CCITT-FALSE，初值 FFFF，多项式 1021，不反射，不异或输出 |
+| 0 | 2 | Magic `36 8b` |
+| 2 | 1 | Version `01` |
+| 3 | 1 | Type: 1 motion, 2 E-stop, 3 status |
+| 4 | 2 | uint16 sequence; status echoes last accepted command |
+| 6 | 4 | uint32 connection session, nonzero |
+| 10 | 2 | int16 linear velocity in mm/s; status uses flags instead |
+| 12 | 2 | int16 angular velocity in mrad/s; status requires zero |
+| 14 | 4 | uint32 robot-issued challenge, nonzero |
+| 18 | 2 | CRC-16/CCITT-FALSE of bytes 0..17, init FFFF, poly 1021, no reflection/xorout |
 
-运动范围为 ±1000 mm/s 和 ±4000 mrad/s。这是解析器的边界，不是批准的机器人速度。
-本阶段遥控器**只**发送零速运动指令。急停报文的速度字段必须为零。
-未知的类型、标志位或版本一律拒收。状态标志：bit 0 ACK 有效，bit 1 急停已锁存，
-bit 2 软件允许运动，bit 3 实际输出已禁用（本阶段始终置位）。
-ACK 表示协议层接受了这条指令，不代表电机动了。
+Motion bounds are +/-1000 mm/s and +/-4000 mrad/s. These are parser bounds,
+not approved robot speeds. The remote sends ONLY zero motion in this phase.
+E-stop must carry zero velocity fields. Unknown types, flag bits, or versions
+are rejected. Status flags: bit 0 ACK valid, bit 1 E-stop latched, bit 2 software
+motion permitted, bit 3 actual outputs disabled (always set in this phase).
+An ACK means the protocol accepted the command, not that a motor moved.
 
-## 新鲜度与安全
+## Freshness and safety
 
-- 机器人在每次连接时建立新的会话；旧的运动许可和序列号跟踪被清除，
-  但 MotionSafety 的急停锁存会保留。
-- 机器人发出的挑战码在本地有效期为 200 ms，每接受一条指令后就更换。遥控器回显该挑战码。
-  这样不需要同步时钟，就能限制延迟指令被接受。每个挑战码只能用一次。
-- 重复的、乱序的、处于半范围歧义区的 uint16 序列号都被拒收。
-  支持从 65535 回绕到 0。跳过超过 32767 条指令就需要重新连接。
-- 校验失败不会刷新 MotionSafety 或应用层 ACK。软件闸门在最后一条被接受的运动指令之后
-  恰好 450 ms 超时；一旦观察到主动断开，立即撤销运动许可。
-- 每次 GATT 写回调都会立即处理该报文，因此即使同一次 BLE poll 中后面跟着一条运动写入，
-  急停也不会丢失。特征值容量设为 21 字节，这样即使 BLE 库把超长写入截断，
-  也能把它识别为无效；只接受长度为 20 的写入。
-- 遥控器只有在收到的 ACK 有进展、且与它最近发出的序列号一致时，才认为应用层链路健康。
-  重复的状态、确认未发送序列号的 ACK、格式错误的状态或错误的会话，都不能刷新它的 450 ms 健康计时器。
-  延迟的 ACK 可能会保守地触发重连；请根据实测数据调整。
-- 机器人在断开、超时、BLE 初始化失败或急停锁存时，让板载 LED 闪烁。
-  遥控器在没有收到新的 ACK 进展之前一直闪烁。
-- 在遥控器串口输入 `e` 会请求急停，并以新的序列号/挑战码反复发送。
-  这个输入被有意设计为"粘住"，直到遥控器复位。它只是台架上的触发方式，
-  不是实体急停。任何 BLE 指令都不能解除机器人的锁存。
-- APDS 恢复目前仍是一个固定为 `false` 的占位。将来的代码必须提供一个新的本地手势边沿，
-  保持急停的优先级，并要求之后再收到一条运动指令。原有的 MotionSafety 测试覆盖了
-  急停与恢复同时发生的情况。
+- Robot establishes a new session on each connection; old command permission
+  and sequence tracking clear, but MotionSafety's E-stop latch persists.
+- Robot issues a challenge with a 200 ms local lifetime and replaces it after
+  any accepted command. Remote echoes it. This bounds acceptance of delayed
+  commands without synchronizing clocks. A challenge can be used only once.
+- Duplicate, reordered and half-range-ambiguous uint16 sequences are rejected.
+  Wrap from 65535 to 0 works. More than 32767 skipped commands requires reconnect.
+- Validation failures do not refresh MotionSafety or the application ACK.
+  The software gate expires exactly 450 ms after the last accepted motion;
+  explicit disconnect invalidates permission immediately when observed.
+- Each GATT write callback processes the frame immediately, so E-stop is not
+  lost when a motion write follows in the same BLE poll. A 21-byte characteristic
+  capacity exposes oversize writes as invalid even if the BLE library truncates
+  their payload; only length 20 is accepted.
+- Remote considers the application healthy only on a progressing ACK matching
+  its most recently sent sequence. Duplicate status, unsent sequence ACKs,
+  malformed status, or wrong session cannot refresh its 450 ms health timer.
+  Delayed ACKs can conservatively cause reconnect; tune with measurements.
+- Robot flashes its built-in LED when disconnected, timed out, BLE init fails,
+  or E-stop is latched. Remote flashes until it has fresh ACK progress.
+- Serial `e` on remote requests E-stop, repeated with fresh sequence/challenge.
+  This input is deliberately sticky until the remote resets. It is a bench
+  trigger, not a physical emergency stop. No BLE command can unlock the robot.
+- APDS recovery remains a `false` placeholder. Future code must supply a fresh
+  local gesture edge, preserving E-stop precedence and requiring a later motion
+  command. Original MotionSafety tests cover simultaneous stop/recovery.
 
-## 非阻塞行为的局限
+## Limits of nonblocking behavior
 
-ArduinoBLE 1.4.1 公开的连接、服务发现、订阅和断开 API 在内部是同步的。
-遥控器把它们放在不同的循环阶段中执行，并把 ATT 超时设为 100 ms；
-一次服务发现可能包含多次这样的等待。重试间隔为 1 s。机器人从不执行中心端的服务发现。
-稳态的应用层传输使用无响应写入和通知，而不是 ATT 请求/响应等待。
-ArduinoBLE/HCI 仍可能等待传输层流控，而且这里没有证明 `BLE.poll()` 的最坏耗时有上界。
-遥控器的 LED 更新在连接操作期间可能暂停。这只是协作式的应用代码，
-不是完全异步的 BLE 协议栈，也不是经过验证的 500 ms 端到端停车。
-在使能电机之前，请测量最坏情况下的循环和停车延迟，包括无线拥塞和重连；
-如果实测的上界满足不了预算，就改用异步协议栈或独立的硬件看门狗。
+ArduinoBLE 1.4.1 public connect, service discovery, subscription and disconnect
+APIs are synchronous internally. The remote performs them in separate loop
+phases and sets an ATT timeout of 100 ms; discovery can contain multiple such
+waits. Retry is scheduled at 1 s. The robot never performs central discovery.
+Steady-state application transfer uses write-without-response and notifications,
+not ATT request/response waits. ArduinoBLE/HCI can still wait for transport flow
+control, and `BLE.poll()` has no proven worst-case bound here. Remote LED updates
+may pause during connection operations. This is cooperative application code,
+not a fully asynchronous BLE stack or a verified 500 ms end-to-end stop.
+Before motor enable, measure worst-case loop/stop latency, including radio
+congestion and reconnect; use an asynchronous stack or independent hardware
+watchdog if measured bounds cannot meet the budget.
 
-CRC、UUID、会话号和挑战码都不是安全认证。会话号由运行时计时加计数器生成，
-不持久保存，也不是密码学随机数，复位后可能重复。没有绑定、对端白名单、加密策略，
-也不能防御恶意的无线设备。多台相同的机器人无法区分：在实现配对之前，
-台架上只能同时运行一对设备。急停锁存只保存在 RAM 中。
-没有为任何电机、编码器、电池或外部开关配置 GPIO；没有输出并不能证明电气默认状态是安全的。
+CRC, UUID, session and challenge are not security authentication. Session uses
+runtime timing plus a counter, is not persistent or cryptographically random,
+and can repeat across reset. There is no bonding, peer allowlist, encryption
+policy, or protection against a malicious radio peer. Multiple matching robots
+are not distinguished: operate only one bench pair until pairing is implemented.
+E-stop latch is RAM-only. No GPIO for any motor, encoder, battery or external
+switch is configured; absent outputs do not establish safe electrical defaults.
 
-## 可复现的检查
+## Reproducible checks
 
 ```
 bash scripts/test-host.sh
@@ -90,23 +105,26 @@ arduino-cli lib install ArduinoBLE@1.4.1
 bash scripts/compile-firmware.sh
 ```
 
-主机测试使用 C++11，不需要 Arduino/BLE 库，也不需要硬件。测试覆盖：报文格式、
-独立的 CRC 校验向量、示例报文每一个单比特翻转、长度/类型/版本/范围错误、
-会话/挑战码/序列号拒收、时间和序列号回绕、看门狗集成、急停持久性，以及遥控器 ACK 新鲜度。
-原有的 MotionSafety 源码和测试未作修改。
+Host tests use C++11, no Arduino/BLE library and no hardware. They exercise wire
+format, an independent CRC check vector, every single-bit corruption of a sample
+frame, size/type/version/bounds errors, session/challenge/sequence rejection,
+time and sequence rollover, watchdog integration, E-stop persistence and remote
+ACK freshness. Original MotionSafety source and tests are unchanged.
 
-## 必需的台架检查（**尚未**执行）
+## Required bench checks (NOT yet performed)
 
-1. 保持电机电源断开。给两块板各烧录一个程序；验证两者都能在不接 USB 串口的情况下启动，
-   并且无论哪一块先上电，都能发现对方并重新连接。
-2. 抓取状态/指令通信：20 字节布局、50 ms 节拍、回显的 ACK、变化的挑战码/会话号。
-   确认链路健康时两端的指示灯都停止闪烁。
-3. 分别中断每一个方向，再分别给每块板断电。确认在实测的时间预算内，
-   机器人的运动许可变为零、遥控器显示故障。区分"无线链路丢失"和"连着但对端不响应"。
-4. 注入过短/过长/CRC 错误/超出范围/重复/旧会话/过期挑战码的报文；
-   验证它们不能延长看门狗或 ACK 健康状态。
-5. 发送 `e`，然后发送运动报文并重连：机器人保持锁存。在集成 APDS 之前，
-   机器人复位会清除它在 RAM 中的锁存；遥控器复位只清除它"粘住"的请求。
-   绝不能把任何一种复位当作批准的电机重新使能途径。
-6. 在干扰和建立连接期间，测量最坏的循环时间、从最后一个有效报文到输出禁用的时间，
-   以及 LED 延迟。本阶段没有物理电机输出可测；请把软件闸门与硬件停车测试分开记录。
+1. Keep motor power disconnected. Flash one sketch to each board; verify both
+   can boot without USB serial and discover/reconnect in either power-up order.
+2. Capture status/command traffic: 20-byte layout, 50 ms schedules, echoed ACK,
+   changing challenge/session. Confirm both indicators stop flashing on health.
+3. Interrupt either direction separately, then power off each board. Confirm
+   robot permission zero and remote fault indication within the measured budget.
+   Distinguish radio link loss from a connected-but-silent peer.
+4. Inject short/oversized/bad-CRC/out-of-range/duplicate/old-session/expired-token
+   frames; verify they cannot extend the watchdog or ACK health.
+5. Send `e`, then motion packets and reconnect: robot remains latched. Until
+   APDS is integrated, robot reset clears its RAM latch; remote reset only clears
+   its sticky request. Never use either reset as an approved motor re-arm path.
+6. Measure worst loop time, last valid packet to disabled output and LED latency
+   under interference and connection setup. This phase has no physical motor
+   output to measure; record software gate separately from hardware stop tests.

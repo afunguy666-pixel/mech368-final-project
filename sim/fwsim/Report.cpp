@@ -1,4 +1,4 @@
-// 写出 <名字>.csv、<名字>.log 以及独立的 <名字>.html 回放页面。
+// Writes <name>.csv, <name>.log and a self-contained <name>.html replay.
 #include "Simulation.h"
 #include <algorithm>
 #include <cmath>
@@ -22,7 +22,7 @@ std::string json(const std::string& s) {
       case '\n': out += "\\n"; break;
       case '\r': break;
       case '\t': out += "\\t"; break;
-      case '<': out += "\\u003c"; break;  // 避免页面中出现 </script>
+      case '<': out += "\\u003c"; break;  // keep </script> out of the page
       default:
         if (c < 0x20) {
           char buf[8];
@@ -85,7 +85,7 @@ void Simulation::writeReport(const std::string& dir, const std::string& name,
     }
   }
 
-  // ---------------------------------------------------------- 地图点 ---
+  // ---------------------------------------------------------- map points ---
   if (!mapPoints_.empty()) {
     std::ofstream f(base + ".map.csv");
     f << "t_ms,board,logged_x_m,logged_y_m,logged_temp_c,true_x_m,true_y_m,true_temp_c\n";
@@ -95,7 +95,7 @@ void Simulation::writeReport(const std::string& dir, const std::string& name,
         << num(world_.temperature(Vec2{p.truePose.x, p.truePose.y}), 2) << "\n";
   }
 
-  // ------------------------------------------------------ 无线报文 ---
+  // ------------------------------------------------------ radio frames ---
   {
     static const char* fates[] = {"delivered", "lost", "blocked", "corrupted", "link_down"};
     static const char* types[] = {"?", "motion", "estop", "status"};
@@ -117,24 +117,24 @@ void Simulation::writeReport(const std::string& dir, const std::string& name,
     }
   }
 
-  // ---------------------------------------------------------------- 日志 ---
+  // ---------------------------------------------------------------- log ---
   struct Line { uint64_t t; std::string text; };
   std::vector<Line> lines;
-  for (const auto& e : events_) lines.push_back(Line{e.t, e.source + "：" + e.text});
+  for (const auto& e : events_) lines.push_back(Line{e.t, e.source + ": " + e.text});
   for (const auto& b : boards_)
     for (const auto& l : b->serialOut) lines.push_back(Line{l.t, b->name + "> " + l.text});
   std::stable_sort(lines.begin(), lines.end(), [](const Line& a, const Line& b) { return a.t < b.t; });
   {
     std::ofstream f(base + ".log");
-    f << "场景：" << name << "\n" << description << "\n\n";
+    f << "scenario: " << name << "\n" << description << "\n\n";
     for (const auto& l : lines) {
       char buf[32];
       std::snprintf(buf, sizeof buf, "[%9.3f s] ", l.t / 1e6);
       f << buf << l.text << "\n";
     }
-    f << "\n检查：\n";
-    for (const auto& c : checks_) f << (c.ok ? "  通过  " : "  失败  ") << c.text << "  (" << c.where << ")\n";
-    f << (passed() ? "结果：通过\n" : "结果：失败\n");
+    f << "\nchecks:\n";
+    for (const auto& c : checks_) f << (c.ok ? "  PASS  " : "  FAIL  ") << c.text << "  (" << c.where << ")\n";
+    f << (passed() ? "RESULT: PASS\n" : "RESULT: FAIL\n");
   }
 
   // --------------------------------------------------------------- HTML ---

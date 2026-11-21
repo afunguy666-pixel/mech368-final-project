@@ -1,9 +1,9 @@
-// Arduino_HS300x（Nano 33 BLE Sense Rev2 的温湿度传感器）的替身。
-// 在机器人板上，读数跟随机器人所在位置的模拟温度场，
-// 带有一阶热滞后，以及 vehicle 文件中设定的偏移和噪声。
-// 其他开发板读到的是环境温度。
-// 假定每次读取阻塞约 10 ms（一次测量）；
-// 在依赖这一点之前，请实测真实库的耗时。
+// Host stand-in for Arduino_HS300x (Nano 33 BLE Sense Rev2 temperature and
+// humidity sensor). On the robot board the reading follows the simulated
+// temperature field at the robot's position, with first-order thermal lag,
+// offset and noise from the vehicle file. Other boards read the ambient value.
+// Each read is assumed to block for ~10 ms (one measurement); measure the
+// real library's timing before relying on this.
 #ifndef FWSIM_ARDUINO_HS300X_H
 #define FWSIM_ARDUINO_HS300X_H
 

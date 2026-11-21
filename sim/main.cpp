@@ -13,7 +13,7 @@ void writePose(std::ostream& file, const sil::Pose& pose) {
 
 int main(int argc, char** argv) {
   if (argc != 2) {
-    std::cerr << "用法：sil_sim 输出目录\n";
+    std::cerr << "Usage: sil_sim output-directory\n";
     return 2;
   }
   const struct { const char* name; sil::Scenario scenario; } scenarios[] = {
@@ -41,9 +41,9 @@ int main(int argc, char** argv) {
     }
     file.close();
     if (!file) {
-      std::cerr << "无法写入 " << path << '\n';
+      std::cerr << "Cannot write " << path << '\n';
       return 1;
     }
-    std::cout << path << " (" << rows.size() << " 个采样)\n";
+    std::cout << path << " (" << rows.size() << " samples)\n";
   }
 }

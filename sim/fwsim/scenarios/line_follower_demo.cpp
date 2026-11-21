@@ -1,5 +1,5 @@
-// sim/examples/line_follower 的场景（演示模拟器中的电机、编码器、巡线传感器、
-// 超声波、手势、IMU、电池和温度）。
+// Scenarios for sim/examples/line_follower (demo of motors, encoders, line
+// sensors, ultrasonic, gestures, IMU and battery in the simulator).
 #include "Simulation.h"
 #include <Arduino_APDS9960.h>
 #include <cmath>
@@ -24,55 +24,55 @@ double speedAt(const Simulation& sim, double ms) {
 }
 }  // namespace
 
-FWSIM_SCENARIO(line_follow, "演示：手势启动，沿椭圆赛道跑一圈，手势停车") {
+FWSIM_SCENARIO(line_follow, "Demo: start by gesture, follow the oval for one lap, stop by gesture") {
   demo(sim, "sim/worlds/oval.world");
   sim.gesture(1000, GESTURE_UP);
   sim.gesture(27000, GESTURE_DOWN);
   sim.runUntil(900);
   const Pose2 start = sim.vehicle().pose;
   FWSIM_CHECK(sim, std::hypot(start.x - sim.world().start.x, start.y - sim.world().start.y) < 1e-6,
-              "做出 UP 手势之前机器人不动");
+              "robot does not move before the UP gesture");
   sim.runUntil(27000);
   const double lap = sim.world().lineLength();
   char buf[128];
-  std::snprintf(buf, sizeof buf, "行驶 %.2f m（一圈 %.2f m）；最大偏离 %.1f mm",
+  std::snprintf(buf, sizeof buf, "travelled %.2f m of a %.2f m lap; max line offset %.1f mm",
                 sim.vehicle().travelled, lap, sim.maxLineOffset(3000, 27000) * 1000);
-  sim.log("检查", buf);
-  FWSIM_CHECK(sim, sim.vehicle().travelled >= lap, "26 s 内至少跑完一圈");
-  FWSIM_CHECK(sim, sim.maxLineOffset(3000, 27000) < 0.015, "传感器排始终在线中心 15 mm 以内");
-  FWSIM_CHECK(sim, sim.vehicle().collisions == 0, "没有碰撞");
+  sim.log("check", buf);
+  FWSIM_CHECK(sim, sim.vehicle().travelled >= lap, "completes at least one lap in 26 s");
+  FWSIM_CHECK(sim, sim.maxLineOffset(3000, 27000) < 0.015, "sensor bar stays within 15 mm of the line");
+  FWSIM_CHECK(sim, sim.vehicle().collisions == 0, "no collisions");
   sim.runUntil(29000);
-  FWSIM_CHECK(sim, speedAt(sim, 28900) < 0.01, "DOWN 手势后机器人停下");
-  FWSIM_CHECK(sim, sim.serialContains(Robot, "手势 DOWN"), "程序记录了 DOWN 手势");
+  FWSIM_CHECK(sim, speedAt(sim, 28900) < 0.01, "robot stopped after the DOWN gesture");
+  FWSIM_CHECK(sim, sim.serialContains(Robot, "gesture DOWN"), "sketch logged the DOWN gesture");
 }
 
-FWSIM_SCENARIO(obstacle_stop, "演示：在赛道上的方块前停车，方块移走后继续") {
+FWSIM_SCENARIO(obstacle_stop, "Demo: stop before a block on the line, resume when it is removed") {
   demo(sim, "sim/worlds/oval_obstacle.world");
   sim.gesture(500, GESTURE_UP);
-  sim.at(25000, [](Simulation& s) { s.world().boxes.clear(); }, "方块已从场地移走");
+  sim.at(25000, [](Simulation& s) { s.world().boxes.clear(); }, "block removed from the course");
   sim.runUntil(24000);
-  FWSIM_CHECK(sim, sim.vehicle().collisions == 0, "机器人始终没有碰到方块");
-  FWSIM_CHECK(sim, sim.serialContains(Robot, "前方障碍物"), "程序检测到了障碍物");
-  FWSIM_CHECK(sim, speedAt(sim, 23900) < 0.01, "机器人停在方块前方");
+  FWSIM_CHECK(sim, sim.vehicle().collisions == 0, "robot never touches the block");
+  FWSIM_CHECK(sim, sim.serialContains(Robot, "obstacle at"), "sketch detected the obstacle");
+  FWSIM_CHECK(sim, speedAt(sim, 23900) < 0.01, "robot is standing still in front of the block");
   const double gap = sim.vehicle().distanceReading(0);
   char buf[96];
-  std::snprintf(buf, sizeof buf, "停车时超声波测得距离：%.1f cm", gap * 100);
-  sim.log("检查", buf);
-  FWSIM_CHECK(sim, gap > 0.05 && gap < 0.25, "停在距方块 5 到 25 cm 处");
+  std::snprintf(buf, sizeof buf, "ultrasonic distance while stopped: %.1f cm", gap * 100);
+  sim.log("check", buf);
+  FWSIM_CHECK(sim, gap > 0.05 && gap < 0.25, "stops between 5 and 25 cm from the block");
   sim.runUntil(28000);
-  FWSIM_CHECK(sim, speedAt(sim, 27900) > 0.1, "方块移走后机器人继续前进");
+  FWSIM_CHECK(sim, speedAt(sim, 27900) > 0.1, "robot resumes after the block is removed");
 }
 
-FWSIM_SCENARIO(low_battery, "演示：电池电压降到 6.8 V 以下时红色 LED 点亮") {
+FWSIM_SCENARIO(low_battery, "Demo: red LED turns on when the battery sags below 6.8 V") {
   demo(sim, "sim/worlds/oval.world");
   sim.setBattery(3000, 6.5);
   sim.runUntil(5000);
-  FWSIM_CHECK(sim, sim.levelAt(Robot, LEDR, 2900) == HIGH, "电量充足时红色 LED 熄灭（低电平点亮）");
-  FWSIM_CHECK(sim, sim.levelAt(Robot, LEDR, 3600) == LOW, "电压下降后 600 ms 内红色 LED 点亮");
-  FWSIM_CHECK(sim, sim.serialContains(Robot, "电量低"), "程序报告电量低");
+  FWSIM_CHECK(sim, sim.levelAt(Robot, LEDR, 2900) == HIGH, "red LED off (active low) with a full battery");
+  FWSIM_CHECK(sim, sim.levelAt(Robot, LEDR, 3600) == LOW, "red LED on within 600 ms of the voltage drop");
+  FWSIM_CHECK(sim, sim.serialContains(Robot, "LOW BATTERY"), "sketch reports the low battery");
 }
 
-// ---------------------------------------------------- 讲义场地图 ---
+// ---------------------------------------------------- handout field map ---
 namespace {
 double closestApproach(const Simulation& sim, Vec2 p) {
   double best = 1e9;
@@ -81,24 +81,24 @@ double closestApproach(const Simulation& sim, Vec2 p) {
 }
 }  // namespace
 
-FWSIM_SCENARIO(course_first_cone, "演示（讲义场地）：在第一条竖段的锥桶前停车") {
+FWSIM_SCENARIO(course_first_cone, "Demo on the handout field: stop before the cone on the first leg") {
   demo(sim, "sim/worlds/course.world");
   sim.gesture(500, GESTURE_UP);
   sim.runUntil(12000);
-  FWSIM_CHECK(sim, sim.vehicle().collisions == 0, "机器人始终没有碰到锥桶");
-  FWSIM_CHECK(sim, sim.serialContains(Robot, "前方障碍物"), "程序检测到了锥桶");
-  FWSIM_CHECK(sim, speedAt(sim, 11900) < 0.01, "机器人停在锥桶前方");
-  FWSIM_CHECK(sim, sim.vehicle().pose.y > 0.3, "机器人停车前已沿第一条竖段向上行驶");
+  FWSIM_CHECK(sim, sim.vehicle().collisions == 0, "robot never touches a cone");
+  FWSIM_CHECK(sim, sim.serialContains(Robot, "obstacle at"), "sketch detected the cone");
+  FWSIM_CHECK(sim, speedAt(sim, 11900) < 0.01, "robot is standing still in front of the cone");
+  FWSIM_CHECK(sim, sim.vehicle().pose.y > 0.3, "robot drove up the first leg before stopping");
 }
 
-FWSIM_SCENARIO(course_serpentine, "演示（讲义场地，去掉锥桶）：通过所有 90° 弯到达终点") {
+FWSIM_SCENARIO(course_serpentine, "Demo on the handout field without cones: follow all 90-degree turns to the end") {
   demo(sim, "sim/worlds/course.world");
-  // 纯巡线测试。如果保留边界，示例程序"20 cm 内就停车"的规则会看到
-  // 每个底部横段外约 20 cm 处的墙而停下。
+  // Pure line-following test. With the border kept, the demo's "stop below
+  // 20 cm" rule sees the wall ~20 cm beyond each bottom joint and stops.
   sim.at(0, [](Simulation& s) {
     s.world().circles.clear();
     s.world().walls.clear();
-  }, "移除锥桶和边界墙：纯巡线运行");
+  }, "cones and border walls removed: pure line-following run");
   sim.gesture(500, GESTURE_UP);
   sim.runUntil(60000);
   const Vec2 end = sim.world().lines.at(0).pts.back();
@@ -107,35 +107,36 @@ FWSIM_SCENARIO(course_serpentine, "演示（讲义场地，去掉锥桶）：通
   for (const auto& s : sim.samples())
     if (std::hypot(s.pose.x - end.x, s.pose.y - end.y) < 0.15) { reachedMs = s.t / 1000.0; break; }
   char buf[160];
-  std::snprintf(buf, sizeof buf, "赛道长 %.2f m；离终点最近 %.1f cm；到达时间 %.1f s；"
-                "最大偏离 %.1f mm", sim.world().lineLength(), approach * 100, reachedMs / 1000,
+  std::snprintf(buf, sizeof buf, "track length %.2f m; closest approach to the end %.1f cm; reached at %.1f s; "
+                "max line offset %.1f mm", sim.world().lineLength(), approach * 100, reachedMs / 1000,
                 sim.maxLineOffset(1000, reachedMs > 0 ? reachedMs : 60000) * 1000);
-  sim.log("检查", buf);
-  FWSIM_CHECK(sim, reachedMs > 0, "机器人到达赛道终点（15 cm 以内）");
+  sim.log("check", buf);
+  FWSIM_CHECK(sim, reachedMs > 0, "robot reaches the end of the track (within 15 cm)");
   FWSIM_CHECK(sim, reachedMs < 0 || sim.maxLineOffset(1000, reachedMs) < 0.06,
-              "通过所有弯道时传感器排始终在线中心 6 cm 以内");
-  FWSIM_CHECK(sim, sim.vehicle().collisions == 0, "没有碰撞");
+              "sensor bar stays within 6 cm of the line centre through all turns");
+  FWSIM_CHECK(sim, sim.vehicle().collisions == 0, "no collisions");
 }
 
-FWSIM_SCENARIO(course_heat_map, "演示（讲义场地）：沿赛道记录温度并为地图评分") {
+FWSIM_SCENARIO(course_heat_map, "Demo on the handout field: log temperature along the track and score the map") {
   demo(sim, "sim/worlds/course.world");
-  // 沿赛道的纯建图运行（为什么对这个示例程序移除边界，见 course_serpentine）。
+  // Pure mapping run along the track (see course_serpentine for why the
+  // border is removed for this demo sketch).
   sim.at(0, [](Simulation& s) {
     s.world().circles.clear();
     s.world().walls.clear();
-  }, "移除锥桶和边界墙：沿赛道建图");
-  sim.serialInput(Robot, 100, "pose 0.4425 0.12 90\n");  // 已知的初始位姿
-  sim.gesture(2000, GESTURE_UP);                        // 静止 2 s：校准陀螺仪零偏
+  }, "cones and border walls removed: mapping run along the track");
+  sim.serialInput(Robot, 100, "pose 0.4425 0.12 90\n");  // known initial pose
+  sim.gesture(2000, GESTURE_UP);                        // 2 s still: gyro bias calibration
   sim.gesture(26000, GESTURE_DOWN);
   sim.runUntil(27000);
   const MapScore m = sim.scoreMap();
   char buf[256];
   std::snprintf(buf, sizeof buf,
-                "%d 个地图点（%.0f 个唯一点/m^2），覆盖 %.0f%% 的 0.2 m 网格，位置误差平均 %.1f cm / 最大 %.1f cm，"
-                "温度误差 %.2f °C，地图误差 %.2f °C",
+                "%d map points (%.0f unique/m^2), %.0f%% of 0.2 m cells, position error %.1f cm mean / %.1f cm max, "
+                "temperature error %.2f C, map error %.2f C",
                 m.points, m.pointsPerM2, m.coverage * 100, m.meanPosError * 100, m.maxPosError * 100,
                 m.meanTempError, m.meanMapError);
-  sim.log("检查", buf);
+  sim.log("check", buf);
   double hot = 0, cool = 0;
   int nHot = 0, nCool = 0;
   for (const auto& h : sim.world().heat)
@@ -145,12 +146,12 @@ FWSIM_SCENARIO(course_heat_map, "演示（讲义场地）：沿赛道记录温�
         else { cool += p.temp; ++nCool; }
       }
   const double ambient = sim.world().ambient;
-  FWSIM_CHECK(sim, m.points >= 100, "至少记录 100 个温度点");
-  FWSIM_CHECK(sim, m.meanPosError < 0.10, "记录的位置与真实位置平均相差 10 cm 以内");
-  FWSIM_CHECK(sim, nHot > 0 && hot / nHot > ambient + 3, "地图显示热区比环境温度高");
-  FWSIM_CHECK(sim, nCool > 0 && cool / nCool < ambient - 2, "地图显示冷区比环境温度低");
-  // 剩余误差大多来自 HS300x 的滞后：tau = 2 s、车速 0.25 m/s 时，
-  // 一个读数描述的是沿路径约 0.5 m 之前的空气温度。
-  // 补偿这个滞后（例如把读数标记到约 tau 之前的位姿上）可以减小误差。
-  FWSIM_CHECK(sim, m.meanMapError < 2.5, "地图温度与真实温度场平均相差 2.5 °C 以内");
+  FWSIM_CHECK(sim, m.points >= 100, "at least 100 temperature points logged");
+  FWSIM_CHECK(sim, m.meanPosError < 0.10, "logged positions are within 10 cm of the truth on average");
+  FWSIM_CHECK(sim, nHot > 0 && hot / nHot > ambient + 3, "map shows the hot corner warmer than ambient");
+  FWSIM_CHECK(sim, nCool > 0 && cool / nCool < ambient - 2, "map shows the cool corner colder than ambient");
+  // Most of the remaining error is HS300x lag: with tau = 2 s at 0.25 m/s a
+  // reading describes the air ~0.5 m back along the path. Compensating for the
+  // lag (e.g. tagging readings with the pose ~tau earlier) would reduce it.
+  FWSIM_CHECK(sim, m.meanMapError < 2.5, "mapped temperatures are within 2.5 C of the true field on average");
 }

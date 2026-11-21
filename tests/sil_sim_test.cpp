@@ -78,7 +78,7 @@ int main() {
   assert(at(stop, 310).allowed && at(stop, 310).linear == 250);
   assert(at(stop, 320).accepted);
   assert(!at(stop, 550).connected && at(stop, 700).connected);
-  assert(at(stop, 720).accepted); // 收到的运动指令不能解除急停
+  assert(at(stop, 720).accepted); // received motion must not clear E-stop
   for (uint32_t t = 320; t < 900; t += sil::kStepMs) {
     assert(at(stop, t).latched);
     blocked(at(stop, t));

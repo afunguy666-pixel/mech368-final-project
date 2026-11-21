@@ -1,17 +1,18 @@
-// 固件在环模拟：在虚拟开发板上运行未经修改的机器人和遥控器 Arduino 程序，
-// 两块板通过模拟的 BLE 无线链路相连，机器人板接着一辆跑在虚拟场地上的虚拟小车。
+// Firmware-in-the-loop simulation: runs unmodified Arduino sketches for the
+// robot and the remote on virtual boards, connected by a simulated BLE radio,
+// with the robot board wired to a virtual vehicle on a virtual course.
 //
-// 场景文件（sim/fwsim/scenarios/*.cpp）这样使用本 API：
+// Scenario files (sim/fwsim/scenarios/*.cpp) use this API:
 //
-//   FWSIM_SCENARIO(my_test, "这个场景检查什么") {
-//     sim.loadWorld("sim/worlds/course.world");
+//   FWSIM_SCENARIO(my_test, "what it checks") {
+//     sim.loadWorld("sim/worlds/oval.world");
 //     sim.loadVehicle("sim/vehicles/example.vehicle");
 //     sim.useSketch(fwsim::Robot, "robot");
-//     sim.useSketch(fwsim::Remote, "remote", 300);   // 300 ms 时上电
-//     sim.serialInput(fwsim::Remote, 4000, "e");     // 4 s 时输入 'e'
+//     sim.useSketch(fwsim::Remote, "remote", 300);   // powered at 300 ms
+//     sim.serialInput(fwsim::Remote, 4000, "e");     // type 'e' at 4 s
 //     sim.runUntil(6000);
 //     FWSIM_CHECK(sim, sim.blinking(fwsim::Robot, LED_BUILTIN, 4500, 6000),
-//                 "急停锁存期间机器人 LED 闪烁");
+//                 "robot LED flashes while E-stop is latched");
 //   }
 #ifndef FWSIM_SIMULATION_H
 #define FWSIM_SIMULATION_H
@@ -34,33 +35,33 @@ struct Sample {
   std::vector<double> line, distance;
   int robotLed = 0, remoteLed = 0, ledR = 1, ledG = 1, ledB = 1;
   bool robotLink = false, remoteLink = false, colliding = false;
-  int statusFlags = -1;  // 遥控器最近收到的 Mech368 状态标志
-  double temp = 0, tempTrue = 0;  // HS300x 读数模型 / 真实气温
+  int statusFlags = -1;  // last Mech368 status flags received by the remote
+  double temp = 0, tempTrue = 0;  // HS300x reading model / true air temperature
 };
 
-// 任一块板在 Serial 上打印的 "MAP x y 温度" 行（温度建图）。
+// A "MAP x y tempC" line printed on either board's Serial (temperature mapping).
 struct MapPoint {
   uint64_t t = 0;
   int board = 0;
-  double x = 0, y = 0, temp = 0;  // 程序记录的值
-  Pose2 truePose;                 // 打印这一行时机器人的真实位置
+  double x = 0, y = 0, temp = 0;  // what the sketch logged
+  Pose2 truePose;                 // where the robot really was when it was printed
 };
 struct MapScore {
-  int points = 0, uniquePoints = 0;  // 唯一点 = 位置不同（精确到 1 cm）
-  double pointsPerM2 = 0;            // 每平方米场地的唯一点数
+  int points = 0, uniquePoints = 0;  // unique = distinct 1 cm positions
+  double pointsPerM2 = 0;            // unique points per m^2 of field
   double cellSize = 0.2;
   int cellsVisited = 0, cellsTotal = 0;
-  double coverage = 0;               // 含有记录点的网格单元所占比例
-  double meanPosError = 0, maxPosError = 0;  // 记录位置与真实位置之差（米）
-  double meanTempError = 0;  // 记录温度与机器人真实所在位置的真实温度之差
-  double meanMapError = 0;   // 记录温度与记录位置处真实温度之差
+  double coverage = 0;               // fraction of grid cells with a logged point
+  double meanPosError = 0, maxPosError = 0;  // logged vs true position (m)
+  double meanTempError = 0;  // logged temp vs true temp where the robot really was
+  double meanMapError = 0;   // logged temp vs true temp at the logged position
 };
 
 struct Event { uint64_t t; std::string source, text; };
 
 struct FrameRecord {
   uint64_t sentUs = 0, deliverUs = 0;
-  bool fromRemote = false;  // 指令（遥控器 -> 机器人）还是状态
+  bool fromRemote = false;  // command (remote -> robot) or status
   RadioPacket::Fate fate = RadioPacket::Delivered;
   bool decoded = false;
   mech368::ble::Frame frame;
@@ -76,44 +77,44 @@ class Simulation {
   Simulation(const Simulation&) = delete;
   Simulation& operator=(const Simulation&) = delete;
 
-  // ---- 配置（在第一次 runUntil 之前） ----
+  // ---- configuration (before the first runUntil) ----
   void loadWorld(const std::string& path);
   void loadVehicle(const std::string& path);
   World& world() { return world_; }
   VehicleConfig& vehicleConfig() { return vehicleConfig_; }
   void useSketch(BoardId board, const std::string& sketch, double powerOnMs = 0);
-  RadioConfig& radio() { return air().config; }  // 运行过程中也可以修改
-  void seed(uint32_t value) { seed_ = value; }   // 无线链路和传感器噪声的随机种子（默认 368）
+  RadioConfig& radio() { return air().config; }  // may also be changed while running
+  void seed(uint32_t value) { seed_ = value; }   // radio + sensor noise (default 368)
   Board& board(BoardId id) { return *boards_[id]; }
   Vehicle& vehicle();
   ScriptedIO& hand() { return hand_; }
 
-  // ---- 脚本激励（时间单位为虚拟 ms） ----
+  // ---- scripted stimulus (times in virtual ms) ----
   void at(double ms, std::function<void(Simulation&)> action, const std::string& label = "");
   void serialInput(BoardId board, double ms, const std::string& text);
-  void gesture(double ms, int gesture);                      // 机器人上的 APDS
-  void tilt(double ms, double rollDeg, double pitchDeg);     // 遥控器手部姿态关键帧
+  void gesture(double ms, int gesture);                      // APDS on the robot
+  void tilt(double ms, double rollDeg, double pitchDeg);     // remote hand pose keyframe
   void setInput(BoardId board, double ms, int pin, int level);
   void setAnalog(BoardId board, double ms, int pin, double volts);
   void setBattery(double ms, double volts);
   void powerOff(BoardId board, double ms);
-  void linkLoss(double fromMs, double toMs);                 // 超出范围
-  void block(bool remoteToRobot, double fromMs, double toMs);  // 连着但不通
+  void linkLoss(double fromMs, double toMs);                 // out of range
+  void block(bool remoteToRobot, double fromMs, double toMs);  // connected but silent
 
-  // ---- 运行 ----
+  // ---- run ----
   void runUntil(double ms);
   double nowMs() const { return static_cast<double>(nowUs_) / 1000.0; }
   bool aborted() const { return aborted_; }
 
-  // ---- 观测 ----
+  // ---- observations ----
   int transitions(BoardId board, int pin, double fromMs, double toMs) const;
   bool blinking(BoardId board, int pin, double fromMs, double toMs) const;
   bool steady(BoardId board, int pin, int level, double fromMs, double toMs) const;
-  int levelAt(BoardId board, int pin, double ms) const;  // -1：程序从未驱动过该引脚
+  int levelAt(BoardId board, int pin, double ms) const;  // -1: sketch never drove the pin
   const std::vector<FrameRecord>& frames() const { return frames_; }
-  // 机器人在 ms 时刻或之前发出的最后一条已解码状态报文（没有则为 nullptr）。
+  // Last decoded status frame the robot sent at or before ms (nullptr if none).
   const FrameRecord* statusSentBefore(double ms) const;
-  // 在 ms 时刻或之前送达机器人的最后一条指令的时间（ms）；没有则为 -1。
+  // Time (ms) of the last command delivered to the robot at or before ms; -1 if none.
   double lastCommandDelivered(double ms) const;
   bool serialContains(BoardId board, const std::string& text, double fromMs = 0) const;
   const std::vector<Sample>& samples() const { return samples_; }
@@ -123,7 +124,7 @@ class Simulation {
   MapScore scoreMap(double cellSize = 0.2) const;
   double maxLineOffset(double fromMs, double toMs) const;
 
-  // ---- 检查 / 报告 ----
+  // ---- checks/report ----
   void log(const std::string& source, const std::string& text);
   void check(bool ok, const std::string& text, const char* file, int line);
   const std::vector<CheckResult>& checks() const { return checks_; }
@@ -162,12 +163,12 @@ class Simulation {
   uint32_t seed_ = 368;
 };
 
-// ---------------------------------------------------------- 场景 ---
+// ---------------------------------------------------------- scenarios ---
 struct ScenarioEntry {
   std::string name, description;
   void (*run)(Simulation&);
 };
-// 在所有 useSketch() 调用中把程序 `from` 替换成 `to`（用于 A/B 对比）。
+// Replace sketch `from` with sketch `to` in every useSketch() call (A/B tests).
 void substituteSketch(const std::string& from, const std::string& to);
 void registerScenario(const char* name, const char* description, void (*run)(Simulation&));
 const std::vector<ScenarioEntry>& scenarios();

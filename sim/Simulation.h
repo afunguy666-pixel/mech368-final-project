@@ -15,12 +15,12 @@ constexpr uint32_t kStepMs = 10;
 constexpr uint32_t kDelayMs = 20;
 constexpr double kStepSeconds = 0.01;
 constexpr double kPi = 3.14159265358979323846;
-static_assert(wire::kSendMs == 50, "SIL 场景假定使用第一阶段的发送节拍");
+static_assert(wire::kSendMs == 50, "SIL scenarios assume the Phase 1 cadence");
 
 enum class Scenario { Straight, Turn90, SensorError, Watchdog, Estop };
 
 struct Pose {
-  double x = 0.0, y = 0.0, yaw = 0.0; // 偏航角不做 ±π 折返
+  double x = 0.0, y = 0.0, yaw = 0.0; // yaw is unwrapped
   void step(double distance, double angle) {
     const double half = angle / 2.0;
     const double sinc = std::abs(half) < 1e-9 ? 1.0 : std::sin(half) / half;
@@ -58,10 +58,10 @@ struct ScheduledFrame {
 };
 
 struct Config {
-  // 全部是虚拟假设值，没有一个是在课程机器人上实测的。
+  // Virtual assumptions only; none are measured on the course robot.
   double trackMetres = 0.10;
   double wheelRadiusMetres = 0.020;
-  unsigned encoderCountsPerRev = 1024;  // 车轮每转的解码计数
+  unsigned encoderCountsPerRev = 1024;  // decoded counts at the wheel
   double leftScaleError = -0.02;
   double rightScaleError = 0.02;
   double encoderNoiseMetres = 0.000015;
@@ -96,7 +96,7 @@ inline Script settings(Scenario scenario) {
     case Scenario::Watchdog: return {1700, false};
     case Scenario::Estop: return {1200, false};
   }
-  throw std::invalid_argument("未知的 SIL 场景");
+  throw std::invalid_argument("unknown SIL scenario");
 }
 
 inline std::vector<Row> run(Scenario scenario, uint32_t seed = 368U,
@@ -104,7 +104,7 @@ inline std::vector<Row> run(Scenario scenario, uint32_t seed = 368U,
   if (!std::isfinite(config.trackMetres) || config.trackMetres <= 0.0 ||
       !std::isfinite(config.wheelRadiusMetres) || config.wheelRadiusMetres <= 0.0 ||
       config.encoderCountsPerRev == 0)
-    throw std::invalid_argument("SIL 几何参数或编码器分辨率无效");
+    throw std::invalid_argument("invalid SIL geometry or encoder resolution");
   const auto script = settings(scenario);
   std::vector<Row> rows;
   rows.reserve(script.end / kStepMs + 1U);
@@ -138,8 +138,8 @@ inline std::vector<Row> run(Scenario scenario, uint32_t seed = 368U,
     }
 
     receiver.tick(now);
-    // 只有合成的、编码正确的本地指令。状态/挑战码是立即读取的；
-    // 只有指令投递带有模拟的延迟/丢包。
+    // Only synthetic, correctly encoded local commands. Status/challenge is
+    // sampled immediately; only command delivery has a simulated delay/loss.
     if (connected && now % wire::kSendMs == 0) {
       auto frame = receiver.status(now);
       frame.sequence = sequence++;
@@ -157,7 +157,7 @@ inline std::vector<Row> run(Scenario scenario, uint32_t seed = 368U,
         ScheduledFrame scheduled = {};
         scheduled.at = now + kDelayMs;
         if (!wire::encode(frame, scheduled.bytes.data(), scheduled.bytes.size()))
-          throw std::logic_error("脚本生成的运动报文无效");
+          throw std::logic_error("invalid scripted motion frame");
         transit.push_back(scheduled);
       }
     }
@@ -170,8 +170,8 @@ inline std::vector<Row> run(Scenario scenario, uint32_t seed = 368U,
               (estop && now == 300 + kDelayMs) ? "estop" : "command_accepted";
       transit.pop_front();
     }
-    // 与外设端一致：先接收并处理急停，再处理本地恢复。
-    // 恢复后闸门仍保持关闭，直到之后收到有效的运动报文。
+    // Match the peripheral: receive and process E-stop before local recovery.
+    // The recovered gate remains closed until a later valid motion packet.
     const bool recovery = estop && now == 900;
     receiver.tick(now, recovery);
     if (recovery) event = "local_recovery";
@@ -182,7 +182,7 @@ inline std::vector<Row> run(Scenario scenario, uint32_t seed = 368U,
     if (connected && !latched && !allowed && !rows.empty() && rows.back().allowed)
       event = "watchdog_timeout";
 
-    // t 时刻的记录是在 [t, t+10) 区间积分该指令之前的位姿。
+    // The trace at t records pose before integrating the command over [t,t+10).
     const double v = static_cast<double>(linear) / 1000.0;
     const double omega = static_cast<double>(angular) / 1000.0;
     const double leftVelocity = v - omega * config.trackMetres / 2.0;
@@ -208,8 +208,8 @@ inline std::vector<Row> run(Scenario scenario, uint32_t seed = 368U,
       ? config.gyroBiasRadPerSec + config.gyroNoiseRadPerSec * noise.symmetric()
       : 0.0));
     encoder.step(dist, encoderYaw);
-    // 对瞬时偏航角增量做示意性的定权重融合。
-    // 两个估计器使用相同的车轮观测；后者还使用陀螺仪。
+    // Illustrative constant-weight fusion of instantaneous yaw increments.
+    // The same wheel observations feed both estimators; the latter also sees gyro.
     fused.step(dist, 0.1 * encoderYaw + 0.9 * gyroYaw);
   }
   return rows;

@@ -20,7 +20,7 @@ double segmentDistance(Vec2 p, Vec2 a, Vec2 b) {
   t = std::max(0.0, std::min(1.0, t));
   return dist(p, Vec2{a.x + t * dx, a.y + t * dy});
 }
-// 射线 o + t*d（|d| = 1）与线段 ab 求交；返回 t 或 +inf。
+// Ray o + t*d (|d| = 1) against segment ab; returns t or +inf.
 double raySegment(Vec2 o, Vec2 d, Vec2 a, Vec2 b) {
   const double ex = b.x - a.x, ey = b.y - a.y;
   const double den = d.x * ey - d.y * ex;
@@ -39,20 +39,20 @@ double rayCircle(Vec2 o, Vec2 d, Vec2 c, double r) {
   const double s = std::sqrt(disc);
   const double t1 = -b - s, t2 = -b + s;
   if (t1 >= 0) return t1;
-  if (t2 >= 0) return 0.0;  // 起点在圆内
+  if (t2 >= 0) return 0.0;  // origin inside
   return kInf;
 }
 
-// ------------------------------------------------------- 简易文件解析器 ---
+// ------------------------------------------------------- tiny file parser ---
 struct Statement {
   std::string file;
   int line = 0;
-  std::vector<std::string> words;          // 按位置的参数
-  std::map<std::string, std::string> kv;   // 键=值
+  std::vector<std::string> words;          // positional
+  std::map<std::string, std::string> kv;   // key=value
   std::string where() const { return file + ":" + std::to_string(line) + ": "; }
   [[noreturn]] void fail(const std::string& m) const { throw std::runtime_error(where() + m); }
   double num(size_t i) const {
-    if (i >= words.size()) fail("'" + words[0] + "' 后面应该是一个数字");
+    if (i >= words.size()) fail("expected a number after '" + words[0] + "'");
     return parseNumber(words[i]);
   }
   double num(const std::string& key, double fallback) const {
@@ -62,11 +62,11 @@ struct Statement {
   int pin(const std::string& key, bool required) const {
     auto it = kv.find(key);
     if (it == kv.end()) {
-      if (required) fail("缺少 " + key + "=<引脚>");
+      if (required) fail("missing " + key + "=<pin>");
       return -1;
     }
     const int p = parsePin(it->second);
-    if (p < 0) fail("未知的引脚 '" + it->second + "'");
+    if (p < 0) fail("unknown pin '" + it->second + "'");
     return p;
   }
   bool flag(const std::string& name) const {
@@ -75,14 +75,14 @@ struct Statement {
   double parseNumber(const std::string& s) const {
     char* end = nullptr;
     const double v = std::strtod(s.c_str(), &end);
-    if (end == s.c_str() || *end != '\0' || !std::isfinite(v)) fail("不是数字：'" + s + "'");
+    if (end == s.c_str() || *end != '\0' || !std::isfinite(v)) fail("not a number: '" + s + "'");
     return v;
   }
 };
 
 std::vector<Statement> readStatements(const std::string& path) {
   std::ifstream in(path);
-  if (!in) throw std::runtime_error("无法打开 " + path);
+  if (!in) throw std::runtime_error("cannot open " + path);
   std::vector<Statement> out;
   std::string text;
   int number = 0;
@@ -125,7 +125,7 @@ int parsePin(const std::string& text) {
   return (end != text.c_str() && *end == '\0' && n >= 0 && n < kMaxPins) ? static_cast<int>(n) : -1;
 }
 
-// ----------------------------------------------------------------- 场地 ---
+// ----------------------------------------------------------------- world ---
 World World::load(const std::string& path) {
   World w;
   w.source = path;
@@ -140,11 +140,11 @@ World World::load(const std::string& path) {
       Line l;
       l.width = st.num(1);
       if (st.words.size() < 6 || st.words.size() % 2 != 0)
-        st.fail("line 宽度 x1 y1 x2 y2 [...] 至少需要两个点");
+        st.fail("line WIDTH x1 y1 x2 y2 [...] needs at least two points");
       for (size_t i = 2; i + 1 < st.words.size(); i += 2) l.pts.push_back(Vec2{st.num(i), st.num(i + 1)});
       w.lines.push_back(l);
     } else if (cmd == "stadium") {
-      // 闭合椭圆环：两条直线段由半圆连接，中心在 (cx, cy)。
+      // Closed oval: two straights joined by semicircles, centred at (cx, cy).
       const double cx = st.num(1), cy = st.num(2), straight = st.num(3), r = st.num(4);
       Line l;
       l.width = st.num(5);
@@ -165,25 +165,25 @@ World World::load(const std::string& path) {
     } else if (cmd == "box") {
       Box b{Vec2{std::min(st.num(1), st.num(3)), std::min(st.num(2), st.num(4))},
             Vec2{std::max(st.num(1), st.num(3)), std::max(st.num(2), st.num(4))},
-            st.words.size() > 5 ? st.words[5] : "方块"};
+            st.words.size() > 5 ? st.words[5] : "box"};
       w.boxes.push_back(b);
     } else if (cmd == "circle") {
       w.circles.push_back(Circle{Vec2{st.num(1), st.num(2)}, st.num(3),
-                                 st.words.size() > 4 ? st.words[4] : "圆形障碍"});
+                                 st.words.size() > 4 ? st.words[4] : "circle"});
     } else if (cmd == "wall") {
       w.walls.push_back(Wall{Vec2{st.num(1), st.num(2)}, Vec2{st.num(3), st.num(4)},
-                             st.words.size() > 5 ? st.words[5] : "墙"});
+                             st.words.size() > 5 ? st.words[5] : "wall"});
     } else if (cmd == "border") {
       const Vec2 c[4] = {{0, 0}, {w.width, 0}, {w.width, w.height}, {0, w.height}};
-      for (int i = 0; i < 4; ++i) w.walls.push_back(Wall{c[i], c[(i + 1) % 4], "边界"});
+      for (int i = 0; i < 4; ++i) w.walls.push_back(Wall{c[i], c[(i + 1) % 4], "border"});
     } else if (cmd == "ambient") {
       w.ambient = st.num(1);
     } else if (cmd == "heat") {
-      Heat h{Vec2{st.num(1), st.num(2)}, st.num(3), st.num(4), st.words.size() > 5 ? st.words[5] : "温度源"};
-      if (h.radius <= 0) st.fail("heat 的半径必须为正数");
+      Heat h{Vec2{st.num(1), st.num(2)}, st.num(3), st.num(4), st.words.size() > 5 ? st.words[5] : "heat"};
+      if (h.radius <= 0) st.fail("heat radius must be positive");
       w.heat.push_back(h);
     } else if (cmd == "rounded_border") {
-      // 场地四周的墙，四角是半径为 R 的圆角。
+      // Walls around the floor with rounded corners of radius R.
       const double r = std::max(0.0, std::min(st.num(1), std::min(w.width, w.height) / 2));
       const Vec2 centres[4] = {{w.width - r, r}, {w.width - r, w.height - r}, {r, w.height - r}, {r, r}};
       const int arcSegments = 12;
@@ -194,9 +194,9 @@ World World::load(const std::string& path) {
           loop.push_back(Vec2{centres[corner].x + r * std::cos(a), centres[corner].y + r * std::sin(a)});
         }
       for (size_t i = 0; i < loop.size(); ++i)
-        w.walls.push_back(Wall{loop[i], loop[(i + 1) % loop.size()], "边界"});
+        w.walls.push_back(Wall{loop[i], loop[(i + 1) % loop.size()], "border"});
     } else {
-      st.fail("未知的场地命令 '" + cmd + "'");
+      st.fail("unknown world command '" + cmd + "'");
     }
   }
   return w;
@@ -215,7 +215,7 @@ double World::lineCoverage(Vec2 p, double spot) const {
   for (const auto& l : lines) {
     double d = kInf;
     for (size_t i = 0; i + 1 < l.pts.size(); ++i) d = std::min(d, segmentDistance(p, l.pts[i], l.pts[i + 1]));
-    // 光斑跨在胶带边缘时，读数线性过渡。
+    // Linear transition while the spot straddles the tape edge.
     const double edge = l.width / 2.0;
     const double c = spot > 0 ? (edge + spot - d) / (2.0 * spot) : (d <= edge ? 1.0 : 0.0);
     best = std::max(best, std::max(0.0, std::min(1.0, c)));
@@ -264,13 +264,13 @@ double World::lineLength() const {
   return total;
 }
 
-// --------------------------------------------------------- 小车配置 ---
+// --------------------------------------------------------- vehicle config ---
 VehicleConfig VehicleConfig::load(const std::string& path) {
   VehicleConfig v;
   v.source = path;
   auto side = [](const Statement& st) -> int {
     if (st.words.size() < 2 || (st.words[1] != "left" && st.words[1] != "right"))
-      st.fail("'" + st.words[0] + "' 后面应该是 'left' 或 'right'");
+      st.fail("expected 'left' or 'right' after '" + st.words[0] + "'");
     return st.words[1] == "left" ? 0 : 1;
   };
   for (const auto& st : readStatements(path)) {
@@ -288,7 +288,7 @@ VehicleConfig VehicleConfig::load(const std::string& path) {
       v.gyroNoiseDps = st.num("noise", 0.0);
     } else if (cmd == "motor") {
       MotorConfig& m = side(st) == 0 ? v.left : v.right;
-      if (st.words.size() < 3) st.fail("格式：motor 左右 驱动类型 引脚...（驱动类型：pwm_dir、in_in、en_in_in）");
+      if (st.words.size() < 3) st.fail("motor SIDE DRIVER pins... (driver: pwm_dir, in_in, en_in_in)");
       const std::string& driver = st.words[2];
       if (driver == "pwm_dir") {
         m.driver = Driver::PwmDir;
@@ -304,7 +304,7 @@ VehicleConfig VehicleConfig::load(const std::string& path) {
         m.in1 = st.pin("in1", true);
         m.in2 = st.pin("in2", true);
       } else {
-        st.fail("未知的电机驱动类型 '" + driver + "'（可选：pwm_dir、in_in、en_in_in）");
+        st.fail("unknown motor driver '" + driver + "' (pwm_dir, in_in, en_in_in)");
       }
       m.invert = st.flag("invert");
     } else if (cmd == "encoder") {
@@ -312,7 +312,7 @@ VehicleConfig VehicleConfig::load(const std::string& path) {
       e.a = st.pin("a", true);
       e.b = st.pin("b", false);
       e.ppr = st.num("ppr", 0);
-      if (e.ppr <= 0) st.fail("encoder 需要 ppr=<车轮每转一圈 A 相的脉冲数>");
+      if (e.ppr <= 0) st.fail("encoder needs ppr=<pulses per wheel revolution on channel A>");
       e.invert = st.flag("invert");
     } else if (cmd == "line_sensor") {
       LineSensorConfig s;
@@ -349,18 +349,18 @@ VehicleConfig VehicleConfig::load(const std::string& path) {
       v.tempTau = st.num("tau", v.tempTau);
       v.tempNoise = st.num("noise", v.tempNoise);
       v.tempOffset = st.num("offset", v.tempOffset);
-      if (v.tempTau <= 0) st.fail("temperature 的 tau 必须为正数（秒）");
+      if (v.tempTau <= 0) st.fail("temperature tau must be positive (seconds)");
     } else if (cmd == "battery") {
       v.battery.pin = st.pin("pin", false);
       v.battery.divider = st.num("divider", v.battery.divider);
       v.battery.volts = st.num("volts", v.battery.volts);
       v.battery.drainPerMinute = st.num("drain_per_min", 0.0);
     } else {
-      st.fail("未知的小车命令 '" + cmd + "'");
+      st.fail("unknown vehicle command '" + cmd + "'");
     }
   }
   if (v.trackWidth <= 0 || v.wheelRadius <= 0 || v.maxWheelSpeed <= 0 || v.timeConstant <= 0)
-    throw std::runtime_error(path + "：几何参数和电机参数必须为正数");
+    throw std::runtime_error(path + ": geometry and motor parameters must be positive");
   return v;
 }
 
@@ -394,7 +394,7 @@ Vec2 ScriptedIO::tiltAt(uint64_t t) const {
   return tilt.back().second;
 }
 ImuSample ScriptedIO::imu(Board& b) {
-  // roll > 0：右边缘向下；pitch > 0：前边缘向下。开发板水平时 = (0,0,1) g。
+  // roll > 0: right edge down; pitch > 0: front edge down. Board flat = (0,0,1) g.
   const uint64_t t = b.now();
   const Vec2 a = tiltAt(t);
   const Vec2 before = tiltAt(t >= 10000 ? t - 10000 : 0);
@@ -409,7 +409,7 @@ ImuSample ScriptedIO::imu(Board& b) {
   return s;
 }
 
-// --------------------------------------------------------------- 小车 ---
+// --------------------------------------------------------------- vehicle ---
 Vehicle::Vehicle(const VehicleConfig& config, const World& w)
     : cfg(config), world(w), pose(w.start), batteryVolts(config.battery.volts),
       sensedTemp(w.temperature(Vec2{w.start.x, w.start.y})) {
@@ -482,12 +482,12 @@ void Vehicle::step() {
   const bool hit = world.collides(Vec2{next.x, next.y}, cfg.bodyRadius, &what);
   const double previousSpeed = speed;
   if (hit) {
-    // 车身被挡住：车轮打滑，底盘位置不变，但可以转动。
+    // Body blocked: wheels slip, chassis keeps its position but may rotate.
     next.x = pose.x;
     next.y = pose.y;
     if (!colliding) {
       ++collisions;
-      if (onEvent) onEvent(timeUs, "碰撞：" + what);
+      if (onEvent) onEvent(timeUs, "collision with " + what);
     }
     speed = 0;
   } else {
@@ -550,7 +550,7 @@ bool Vehicle::analogInput(Board&, int pin, double& volts) {
     double r = distanceReading(i);
     if (!std::isfinite(r)) r = d.maxRange;
     r = std::max(d.minRange, std::min(d.maxRange, r + d.noise * gauss(rng)));
-    volts = std::pow(27.728 / (r * 100.0), 1.0 / 1.2045);  // 类似 Sharp GP2Y0A21 的曲线
+    volts = std::pow(27.728 / (r * 100.0), 1.0 / 1.2045);  // Sharp GP2Y0A21-like curve
     return true;
   }
   if (cfg.battery.pin == pin) {
@@ -577,7 +577,7 @@ void Vehicle::outputChanged(Board& b, int pin) {
     const int level = b.outputLevel(pin);
     if (level && trigRise[i] == kNever) trigRise[i] = b.now();
     if (!level && trigRise[i] != kNever) {
-      if (b.now() - trigRise[i] >= 8) trigFall[i] = b.now();  // >= 约 10 us 的触发脉冲
+      if (b.now() - trigRise[i] >= 8) trigFall[i] = b.now();  // >= ~10 us trigger pulse
       trigRise[i] = kNever;
     }
   }
@@ -590,7 +590,7 @@ bool Vehicle::pulseIn(Board& b, int pin, int state, uint64_t timeoutUs, uint64_t
     const bool triggered = state == HIGH && trigFall[i] != kNever && b.now() - trigFall[i] < 5000;
     trigFall[i] = kNever;
     double r = triggered ? distanceReading(i) : std::numeric_limits<double>::infinity();
-    const uint64_t burstUs = 450;  // 回波引脚拉高前换能器发出脉冲串的时间
+    const uint64_t burstUs = 450;  // transducer burst before the echo line rises
     if (!std::isfinite(r)) {
       b.spend(timeoutUs);
       durationUs = 0;
@@ -623,7 +623,7 @@ ImuSample Vehicle::imu(Board&) {
   s.gx = static_cast<float>(cfg.gyroNoiseDps * gauss(rng));
   s.gy = static_cast<float>(cfg.gyroNoiseDps * gauss(rng));
   s.gz = static_cast<float>(yawRate * 180.0 / kPi + cfg.gyroBiasDps + cfg.gyroNoiseDps * gauss(rng));
-  // 水平分量指向世界坐标 +y，20 uT；垂直分量向下，40 uT。
+  // Horizontal field towards world +y, 20 uT; vertical component down, 40 uT.
   s.mx = static_cast<float>(20.0 * std::sin(pose.yaw));
   s.my = static_cast<float>(20.0 * std::cos(pose.yaw));
   s.mz = -40.0f;
