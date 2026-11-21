@@ -2,14 +2,15 @@
 # Commands:
 #   size W H                     floor size (x right, y up)
 #   border                       walls around the floor
+#   rounded_border R             same, with corner radius R
 #   start X Y HEADING_DEG        robot start pose (0 = facing +x, CCW positive)
 #   line WIDTH x1 y1 x2 y2 ...   tape polyline
 #   stadium CX CY STRAIGHT RADIUS WIDTH   closed oval tape loop
 #   box X0 Y0 X1 Y1 [name]       rectangular obstacle
 #   circle CX CY R [name]        round obstacle
 #   wall X0 Y0 X1 Y1 [name]      thin wall
-# This is NOT the official course; redraw it from the course handout.
+# Practice loop, NOT the official course (see course.world, from the handout).
 size 3.0 2.0
 border
-stadium 1.5 1.0 1.4 0.5 0.019
+stadium 1.5 1.0 1.4 0.5 0.05
 start 1.2 0.5 0

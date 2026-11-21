@@ -176,6 +176,19 @@ World World::load(const std::string& path) {
     } else if (cmd == "border") {
       const Vec2 c[4] = {{0, 0}, {w.width, 0}, {w.width, w.height}, {0, w.height}};
       for (int i = 0; i < 4; ++i) w.walls.push_back(Wall{c[i], c[(i + 1) % 4], "border"});
+    } else if (cmd == "rounded_border") {
+      // Walls around the floor with rounded corners of radius R.
+      const double r = std::max(0.0, std::min(st.num(1), std::min(w.width, w.height) / 2));
+      const Vec2 centres[4] = {{w.width - r, r}, {w.width - r, w.height - r}, {r, w.height - r}, {r, r}};
+      const int arcSegments = 12;
+      std::vector<Vec2> loop;
+      for (int corner = 0; corner < 4; ++corner)
+        for (int i = 0; i <= arcSegments; ++i) {
+          const double a = -kPi / 2 + kPi / 2 * corner + kPi / 2 * i / arcSegments;
+          loop.push_back(Vec2{centres[corner].x + r * std::cos(a), centres[corner].y + r * std::sin(a)});
+        }
+      for (size_t i = 0; i < loop.size(); ++i)
+        w.walls.push_back(Wall{loop[i], loop[(i + 1) % loop.size()], "border"});
     } else {
       st.fail("unknown world command '" + cmd + "'");
     }

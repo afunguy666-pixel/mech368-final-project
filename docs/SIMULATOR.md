@@ -54,14 +54,19 @@ For each run you get:
 | BLE | Peripheral + central subset of ArduinoBLE 1.4: advertise/scan/connect/discover/subscribe, write without response, notify, event handlers (run inside `BLE.poll()`). Radio: 10 ms + 0–5 ms latency, in-order delivery, 2 s supervision timeout, randomised blocking connect/discover/subscribe durations. Faults: loss, bit corruption, one-way blocking ("connected but silent"), out of range, board power-off. |
 | Vehicle | Motor drivers `pwm_dir`, `in_in` (DRV8833 style), `en_in_in` (L298N/TB6612 style). First-order motor speed response scaled by battery voltage, deadband, exact differential-drive kinematics, quadrature encoders that fire your ISRs, collision circle. |
 | Sensors | Analog/digital reflective line sensors over tape, HC-SR04-style ultrasonic (trigger pulse + `pulseIn`), Sharp-style analog IR distance, battery divider, IMU gyro/accelerometer/magnetometer from the vehicle motion (with bias/noise), APDS gestures and proximity from the script. The remote's IMU follows a scripted hand tilt. |
-| Course | `sim/worlds/*.world`: tape lines, ovals, boxes, circles, walls. |
+| Course | `sim/worlds/*.world`: tape lines, ovals, boxes, circles, straight or rounded border walls. The firmware link scenarios run on `course.world`. |
 
 All parameters live in two commented text files. **Every number in them is a
 placeholder.** Replace them with your wiring and bench measurements:
 
 - `sim/vehicles/example.vehicle`: pins, motor driver type, wheel and track
   size, encoder PPR, sensor positions, battery divider, gyro bias.
-- `sim/worlds/oval.world`: the course. Redraw it from the course handout.
+- `sim/worlds/course.world`: the final-project field traced from Figure 6 of
+  the course handout (5 cm black track, serpentine path, three cones, rounded
+  field border). The figure has no dimensions, so the layout uses an assumed
+  scale of about 2.0 m x 1.5 m. Measure the real track in KAIS 1220 and update
+  the coordinates. `oval.world` and `oval_obstacle.world` are simple practice
+  loops.
 
 ## Writing a scenario
 
@@ -143,6 +148,14 @@ how the vehicle file's pins reach ordinary Arduino code.
   A side effect to be aware of: if status notifications stop, the remote
   also stops sending (including E-stop frames). Its commands would carry a
   stale challenge in that case anyway, and the robot's watchdog stops motion.
+
+- **Course geometry (assumed scale): the field border is close to the
+  track.** In `course.world` each bottom joint of the track lies about 19 cm
+  from the border, and each top joint about 24 cm. A simple "stop if anything
+  is closer than 20 cm ahead" rule, like the demo sketch's, stops in front of
+  the border before the turn if the border is a physical wall. Check the real
+  field. Obstacle detection should probably only count objects on or near
+  the track, or use a smaller threshold near the ends of a leg.
 
 ## Limits: what passing here does NOT show
 

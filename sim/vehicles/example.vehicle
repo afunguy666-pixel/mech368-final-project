@@ -3,7 +3,7 @@
 # Chassis frame: x forward, y to the left, metres. Pins: D0-D13, A0-A7, LEDR...
 track_width 0.10          # wheel centre to wheel centre
 wheel_radius 0.020
-body_radius 0.07          # collision circle
+body_radius 0.07          # collision circle (handout: fits a 15 cm cylinder)
 motor_max_speed 30        # wheel rad/s at full duty and nominal voltage
 motor_time_constant 0.08  # s, first-order speed response
 motor_deadband 0.06       # |duty| below this does not turn the wheel
@@ -17,9 +17,10 @@ encoder left  a=D2 b=D3 ppr=360
 encoder right a=D8 b=D9 ppr=360
 # Reflective line sensors: analog (on=V over tape, off=V over floor) or
 # digital (add "digital", on_level=0/1).
-line_sensor left   pin=A0 x=0.06 y=0.018
+# Left/right pair straddles the 5 cm tape (handout); centre sits on it.
+line_sensor left   pin=A0 x=0.06 y=0.035
 line_sensor centre pin=A1 x=0.06 y=0
-line_sensor right  pin=A2 x=0.06 y=-0.018
+line_sensor right  pin=A2 x=0.06 y=-0.035
 # Distance sensors: ultrasonic (HC-SR04 style, pulseIn) or ir_distance (analog).
 ultrasonic front trig=D10 echo=D11 x=0.07 y=0 yaw_deg=0 max=2.0
 # Battery through a divider into an analog pin (V_batt = divider * V_pin).

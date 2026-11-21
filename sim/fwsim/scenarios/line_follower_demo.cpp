@@ -71,3 +71,48 @@ FWSIM_SCENARIO(low_battery, "Demo: red LED turns on when the battery sags below 
   FWSIM_CHECK(sim, sim.levelAt(Robot, LEDR, 3600) == LOW, "red LED on within 600 ms of the voltage drop");
   FWSIM_CHECK(sim, sim.serialContains(Robot, "LOW BATTERY"), "sketch reports the low battery");
 }
+
+// ---------------------------------------------------- handout field map ---
+namespace {
+double closestApproach(const Simulation& sim, Vec2 p) {
+  double best = 1e9;
+  for (const auto& s : sim.samples()) best = std::min(best, std::hypot(s.pose.x - p.x, s.pose.y - p.y));
+  return best;
+}
+}  // namespace
+
+FWSIM_SCENARIO(course_first_cone, "Demo on the handout field: stop before the cone on the first leg") {
+  demo(sim, "sim/worlds/course.world");
+  sim.gesture(500, GESTURE_UP);
+  sim.runUntil(12000);
+  FWSIM_CHECK(sim, sim.vehicle().collisions == 0, "robot never touches a cone");
+  FWSIM_CHECK(sim, sim.serialContains(Robot, "obstacle at"), "sketch detected the cone");
+  FWSIM_CHECK(sim, speedAt(sim, 11900) < 0.01, "robot is standing still in front of the cone");
+  FWSIM_CHECK(sim, sim.vehicle().pose.y > 0.3, "robot drove up the first leg before stopping");
+}
+
+FWSIM_SCENARIO(course_serpentine, "Demo on the handout field without cones: follow all 90-degree turns to the end") {
+  demo(sim, "sim/worlds/course.world");
+  // Pure line-following test. With the border kept, the demo's "stop below
+  // 20 cm" rule sees the wall ~20 cm beyond each bottom joint and stops.
+  sim.at(0, [](Simulation& s) {
+    s.world().circles.clear();
+    s.world().walls.clear();
+  }, "cones and border walls removed: pure line-following run");
+  sim.gesture(500, GESTURE_UP);
+  sim.runUntil(60000);
+  const Vec2 end = sim.world().lines.at(0).pts.back();
+  const double approach = closestApproach(sim, end);
+  double reachedMs = -1;
+  for (const auto& s : sim.samples())
+    if (std::hypot(s.pose.x - end.x, s.pose.y - end.y) < 0.15) { reachedMs = s.t / 1000.0; break; }
+  char buf[160];
+  std::snprintf(buf, sizeof buf, "track length %.2f m; closest approach to the end %.1f cm; reached at %.1f s; "
+                "max line offset %.1f mm", sim.world().lineLength(), approach * 100, reachedMs / 1000,
+                sim.maxLineOffset(1000, reachedMs > 0 ? reachedMs : 60000) * 1000);
+  sim.log("check", buf);
+  FWSIM_CHECK(sim, reachedMs > 0, "robot reaches the end of the track (within 15 cm)");
+  FWSIM_CHECK(sim, reachedMs < 0 || sim.maxLineOffset(1000, reachedMs) < 0.06,
+              "sensor bar stays within 6 cm of the line centre through all turns");
+  FWSIM_CHECK(sim, sim.vehicle().collisions == 0, "no collisions");
+}

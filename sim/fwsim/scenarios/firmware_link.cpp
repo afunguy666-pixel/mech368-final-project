@@ -11,7 +11,7 @@ namespace {
 const double kWatchdogMs = mech368::MotionSafety::kTimeoutMs;
 
 void boot(Simulation& sim, double remoteOnMs = 300, double robotOnMs = 0) {
-  sim.loadWorld("sim/worlds/oval.world");
+  sim.loadWorld("sim/worlds/course.world");
   sim.loadVehicle("sim/vehicles/example.vehicle");
   sim.useSketch(Robot, "robot", robotOnMs);
   sim.useSketch(Remote, "remote", remoteOnMs);
