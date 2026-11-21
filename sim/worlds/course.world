@@ -1,0 +1,38 @@
+# MECH 368 final-project field, traced from Figure 6 ("Field map") of the
+# course handout (mech368-final-project.pdf, page 5). See oval.world for syntax.
+#
+# What comes from the handout:
+#   - black track 5 cm wide (page 3, "Autonomous navigation")
+#   - rounded-rectangle field; serpentine track of 4 vertical legs joined
+#     alternately at the top and bottom; start at the bottom of the left leg
+#   - 3 cone obstacles: on the left leg, on the bottom joint, beside the right leg
+#   - hot area in the top-left corner, cool area in the bottom-right corner
+# What is ASSUMED: Figure 6 has no dimensions and is not to scale (its tape
+# width would make the lanes narrower than the 15 cm robot). Positions were
+# measured in the figure and scaled at 5 mm per figure pixel, giving a
+# ~2.0 m x 1.5 m field with legs ~0.39 m apart. Cone footprints are circles of
+# 8 cm radius. Replace every number once the real track in KAIS 1220 is measured.
+#
+# Temperature-mapping task: hot corner top-left, cool corner bottom-right as
+# in Figure 6. The handout gives no temperatures; ambient, peak offsets and
+# radii below are ASSUMED. Temperature = ambient + delta * exp(-(d / radius)^2).
+
+size 2.035 1.53
+rounded_border 0.175
+
+# Track centre line: start (bottom of left leg) -> up -> right -> down -> right
+# -> up -> right -> down to the end at the bottom of the right leg.
+line 0.05  0.4425 0.12  0.4425 1.2875  0.8275 1.2875  0.8275 0.1925  1.2175 0.1925  1.2175 1.2875  1.6075 1.2875  1.6075 0.12
+
+# Cones (top-down footprint)
+circle 0.380 0.650 0.08 cone_left_leg
+circle 1.025 0.145 0.08 cone_bottom_joint
+circle 1.700 0.965 0.08 cone_right_leg
+
+# Temperature field (deg C, metres)
+ambient 22
+heat 0.27 1.23 0.45 +12 hot_area
+heat 1.77 0.26 0.45 -8 cool_area
+
+# Robot starts on the beginning of the track, facing up the left leg.
+start 0.4425 0.12 90
