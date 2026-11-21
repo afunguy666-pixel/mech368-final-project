@@ -1,0 +1,191 @@
+# Firmware-in-the-loop simulator
+
+Test the **unmodified** robot and remote sketches on a PC before the car
+exists. `scripts/run-fw-sim.sh` compiles `firmware/robot/robot.ino`,
+`firmware/remote/remote.ino` and the example sketches against host stand-ins
+for the Arduino core, ArduinoBLE, the Rev2 IMU (`Arduino_BMI270_BMM150`) and
+the gesture sensor (`Arduino_APDS9960`). Two virtual boards then run on a
+virtual clock, connected by a simulated BLE radio. The robot board is wired to
+a virtual differential-drive vehicle on a virtual course.
+
+This is a different tool from the kinematic SIL in `sim/Simulation.h`
+(`scripts/run-sil.sh`). That one re-implements the loop around the portable
+`Receiver`. This one runs your actual `setup()`/`loop()`/BLE callbacks.
+
+```bash
+bash scripts/run-fw-sim.sh
+```
+
+That runs every scenario and writes replays to `build/fwsim/`. Other commands:
+
+```bash
+bash scripts/run-fw-sim.sh estop_latch
+```
+
+```bash
+bash scripts/run-fw-sim.sh --seeds 20 link_stability
+```
+
+```bash
+bash scripts/run-fw-sim.sh --list
+```
+
+The first runs one scenario with a full event and serial log. The second runs
+a scenario with seeds 1..20 (Monte-Carlo over radio timing and noise). The
+third lists the scenarios. You need Bash and a C++17 compiler (`CXX`
+overrides `c++`). No Arduino CLI, board, Python or network is needed.
+
+For each run you get:
+
+| File | Contents |
+| --- | --- |
+| `<scenario>.html` | Self-contained replay: top-down view, robot trail, sensor rays, LEDs, link/status flags, logic-analyser strip, events + serial log, checks. Open it in any browser. |
+| `<scenario>.csv` | 10 ms samples: pose, wheel speeds, motor duty, battery, line offset, LEDs, link, status flags, sensor readings |
+| `<scenario>.frames.csv` | Every BLE frame on the air: send/deliver time, direction, fate (delivered/lost/blocked/corrupted/link down), decoded Mech368 fields |
+| `<scenario>.log` | Timestamped events, both boards' `Serial` output, and the check results |
+
+## What is simulated
+
+| Part | Model |
+| --- | --- |
+| Time | Virtual microsecond clock per board. Each `loop()` costs 1 ms plus 0–0.3 ms random jitter. API calls cost a few µs, so busy-wait loops on `millis()` terminate. `delay()` advances the clock. A single `setup()`/`loop()` call stuck for more than 20 s of virtual time aborts the run. |
+| Pins | `pinMode`, `digitalWrite/Read`, `analogWrite/Read` (+ resolution), `attachInterrupt` (CHANGE/RISING/FALLING), `noInterrupts`, `pulseIn`, Nano 33 BLE pin numbers (`D0`–`D13`, `A0`–`A7`, `LEDR/G/B`). |
+| Serial | Output is captured with timestamps. Scenario scripts can type input. |
+| BLE | Peripheral + central subset of ArduinoBLE 1.4: advertise/scan/connect/discover/subscribe, write without response, notify, event handlers (run inside `BLE.poll()`). Radio: 10 ms + 0–5 ms latency, in-order delivery, 2 s supervision timeout, randomised blocking connect/discover/subscribe durations. Faults: loss, bit corruption, one-way blocking ("connected but silent"), out of range, board power-off. |
+| Vehicle | Motor drivers `pwm_dir`, `in_in` (DRV8833 style), `en_in_in` (L298N/TB6612 style). First-order motor speed response scaled by battery voltage, deadband, exact differential-drive kinematics, quadrature encoders that fire your ISRs, collision circle. |
+| Sensors | Analog/digital reflective line sensors over tape, HC-SR04-style ultrasonic (trigger pulse + `pulseIn`), Sharp-style analog IR distance, battery divider, IMU gyro/accelerometer/magnetometer from the vehicle motion (with bias/noise), APDS gestures and proximity from the script. The remote's IMU follows a scripted hand tilt. |
+| Course | `sim/worlds/*.world`: tape lines, ovals, boxes, circles, walls. |
+
+All parameters live in two commented text files. **Every number in them is a
+placeholder.** Replace them with your wiring and bench measurements:
+
+- `sim/vehicles/example.vehicle`: pins, motor driver type, wheel and track
+  size, encoder PPR, sensor positions, battery divider, gyro bias.
+- `sim/worlds/oval.world`: the course. Redraw it from the course handout.
+
+## Writing a scenario
+
+Scenarios are C++ files in `sim/fwsim/scenarios/`. Each scenario runs in a
+fresh process, so sketch globals start from power-up every time.
+
+```cpp
+#include "Simulation.h"
+using namespace fwsim;
+
+FWSIM_SCENARIO(my_estop_test, "E-stop during a link loss still latches") {
+  sim.loadWorld("sim/worlds/oval.world");
+  sim.loadVehicle("sim/vehicles/example.vehicle");
+  sim.useSketch(Robot, "robot");            // firmware/robot/robot.ino
+  sim.useSketch(Remote, "remote", 300);     // powered on at 300 ms
+  sim.linkLoss(4000, 5000);                 // out of range 4-5 s
+  sim.serialInput(Remote, 4500, "e");       // operator presses E-stop meanwhile
+  sim.runUntil(9000);
+  FWSIM_CHECK(sim, sim.blinking(Robot, LED_BUILTIN, 6000, 9000), "robot LED flashes");
+}
+```
+
+| Stimulus | |
+| --- | --- |
+| `serialInput(board, ms, "text")` | type into a board's `Serial` |
+| `gesture(ms, GESTURE_UP)` | APDS gesture in front of the robot |
+| `tilt(ms, rollDeg, pitchDeg)` | keyframe for the remote's hand pose (interpolated) |
+| `setInput(board, ms, pin, level)` / `setAnalog(board, ms, pin, volts)` | force a button or analog input |
+| `setBattery(ms, volts)` | battery voltage step |
+| `linkLoss(fromMs, toMs)`, `block(remoteToRobot, fromMs, toMs)`, `powerOff(board, ms)` | radio and power faults |
+| `at(ms, [](Simulation& s) { ... }, "label")` | anything else, e.g. `s.radio().lossCentralToPeripheral = 0.1` or `s.world().boxes.clear()` |
+| `seed(n)`, `board(b).timeOffsetUs` | random seed; start `millis()` near its 32-bit wrap |
+
+| Observation | |
+| --- | --- |
+| `blinking`, `steady`, `levelAt`, `transitions` | any output pin on either board (LEDs...) |
+| `frames()`, `statusSentBefore(ms)`, `lastCommandDelivered(ms)` | decoded BLE traffic |
+| `vehicle()` (`pose`, `travelled`, `collisions`, `distanceReading`...), `maxLineOffset` | physical state |
+| `serialContains(board, "text")`, `hasEvent("text")`, `samples()` | logs and trace |
+
+Pins in `sim.levelAt(...)` are the same constants the sketch uses
+(`LED_BUILTIN`, `LEDR`...). LEDs on the Nano 33 BLE RGB pins are active-low.
+
+## Your own sketches
+
+Every `firmware/<name>/<name>.ino` and `sim/examples/<name>/<name>.ino` is
+compiled in automatically under the sketch name `<name>`. To try a change
+without touching the original, copy the sketch folder somewhere, rename the
+folder and `.ino`, and substitute it into the existing scenarios:
+
+```bash
+FWSIM_SKETCHES=/path/to/remote_v2 bash scripts/run-fw-sim.sh --seeds 10 --sketch remote=remote_v2
+```
+
+`sim/examples/line_follower` is a demo (not course firmware). It drives
+motors with encoder speed control, follows the line, stops for obstacles,
+starts and stops on gestures, and lights the red LED on low battery. It shows
+how the vehicle file's pins reach ordinary Arduino code.
+
+## Current findings on the Phase 1 firmware (2026-11-21)
+
+Results from `bash scripts/run-fw-sim.sh --seeds 10` on the unmodified
+sketches:
+
+- **Watchdog, E-stop latch, corruption and power-loss handling behave as
+  specified.** In every run, every status reporting "motion permitted" was
+  within 450 ms of a delivered motion command, no corrupted frame extended
+  the watchdog, and the E-stop latch survived link loss and reconnect.
+- **The remote drops a healthy link intermittently (all 10 seeds of
+  `link_stability`, 60 s on a perfect radio).** The remote sends commands on
+  its own free-running 50 ms timer, and the robot sends status on another.
+  When the two timers' phases line up badly, each command carries the
+  challenge from the status *before* last. The robot then rejects every
+  other command as stale, and the ACK never matches the remote's most
+  recently sent sequence. After 450 ms the remote declares the link
+  unhealthy and reconnects, which costs about 1.5–2 s of no control. The
+  phase drifts, so this comes and goes. In one `estop_latch` seed the E-stop
+  latched 815 ms after it was requested, because the request landed during
+  such a reconnect (the robot was already inhibited at that point).
+- Sending exactly one command right after each fresh status, as
+  `docs/BLE_PROTOCOL.md` describes ("after receiving status"), fixed it in
+  the simulator. All 11 link scenarios passed on 10/10 seeds with this
+  change to `firmware/remote/remote.ino`. It is not applied; confirm it on
+  hardware.
+
+```diff
+-      if (statusCharacteristic.valueUpdated()) {
++      bool freshStatus = false;
++      if (statusCharacteristic.valueUpdated()) {
+         ...
+-          link.status(bytes, sizeof(bytes), millis());
++          freshStatus = link.status(bytes, sizeof(bytes), millis());
+       }
+ ...
+-      if (link.ready() && static_cast<uint32_t>(now - lastSendAt) >= wire::kSendMs) {
++      if (link.ready() && freshStatus) {  // reply to each status: newest challenge
+```
+
+The CI job `firmware-sim` runs all scenarios with `continue-on-error`
+until this is resolved, and uploads the reports as an artifact.
+
+## Limits: what passing here does NOT show
+
+- ArduinoBLE, HCI and the radio are behavioural models with assumed timings,
+  not the real stack. Real latency, blocking times, flow control and
+  supervision timeout must still be measured on the two boards.
+- The Arduino API stand-ins are a permissive subset. For example
+  `digitalWrite(pin, 1)` compiles here. The board build
+  (`scripts/compile-firmware.sh`) remains the authority on what compiles.
+  The host build does **not** generate Arduino's automatic function
+  prototypes: declare a function before using it. Sketch-local `.cpp`
+  files are not compiled.
+- Libraries other than ArduinoBLE, `Arduino_BMI270_BMM150` and
+  `Arduino_APDS9960` (plus this repository's `libraries/`) are not
+  available. Add a stand-in under `sim/fwsim/hostduino/` if you need one.
+- One boot per run: a board can be powered off, but not reset or powered
+  on again within a scenario.
+- Vehicle physics has no wheel slip, inertia of the chassis, motor
+  saturation current or battery sag under load. Collisions only block
+  translation. IMU axes assume the board is mounted flat, x forward, z up.
+  Interrupts run instantly and never preempt more than one level.
+- `delay()` does not process BLE events. Only `BLE.poll()` and blocking BLE
+  calls do, as in the real library.
+
+Simulation results are evidence about the code's logic under the modelled
+conditions, never a substitute for the bench checks in
+[BLE_PROTOCOL.md](BLE_PROTOCOL.md) and the README.

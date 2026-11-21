@@ -71,6 +71,31 @@ identifies the Mbed OS Nano package. The build target is `arduino:mbed_nano:nano
    bench and a safe independent means to cut power. Log measurements and
    observed behavior rather than treating compilation as acceptance.
 
+## Firmware-in-the-loop simulator
+
+Run the **unmodified** `robot.ino` and `remote.ino` on two virtual boards with a
+simulated BLE radio, plus a virtual vehicle (motors, encoders, line sensors,
+ultrasonic, IMU, gestures, battery) on a virtual course, using only Bash and a
+C++17 compiler:
+
+```sh
+bash scripts/run-fw-sim.sh                   # all scenarios
+bash scripts/run-fw-sim.sh estop_latch       # one scenario with full log
+bash scripts/run-fw-sim.sh --seeds 20 link_stability
+```
+
+Each run writes an interactive HTML replay plus CSV/log files to `build/fwsim/`.
+Wiring, geometry and the course are text files in `sim/vehicles/` and
+`sim/worlds/`; scenarios are C++ files in `sim/fwsim/scenarios/`. See
+[docs/SIMULATOR.md](docs/SIMULATOR.md) for the API, the models, their limits,
+and the current findings on the Phase 1 link timing.
+
+| Path | Purpose |
+| --- | --- |
+| `sim/fwsim/hostduino/` | Host stand-ins for Arduino core, ArduinoBLE, BMI270/BMM150 IMU, APDS-9960 |
+| `sim/fwsim/` | Virtual boards, radio, vehicle/world models, replay viewer, scenarios |
+| `sim/examples/line_follower/` | Demo sketch (not course firmware) driving the virtual vehicle |
+
 ## Software-in-the-loop (SIL) simulator
 
 Run the host tests and generate five CSV traces without an Arduino, BLE hardware,
