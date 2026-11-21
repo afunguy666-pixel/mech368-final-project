@@ -27,3 +27,5 @@ ultrasonic front trig=D10 echo=D11 x=0.07 y=0 yaw_deg=0 max=2.0
 battery pin=A7 divider=3.0 volts=8.0 drain_per_min=0
 # Onboard IMU gyro error, deg/s.
 gyro bias=0.2 noise=0.05
+# Onboard HS300x temperature sensor: first-order lag (s), noise and offset (deg C).
+temperature tau=2.0 noise=0.05 offset=0

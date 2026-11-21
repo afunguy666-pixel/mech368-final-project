@@ -36,6 +36,25 @@ struct Sample {
   int robotLed = 0, remoteLed = 0, ledR = 1, ledG = 1, ledB = 1;
   bool robotLink = false, remoteLink = false, colliding = false;
   int statusFlags = -1;  // last Mech368 status flags received by the remote
+  double temp = 0, tempTrue = 0;  // HS300x reading model / true air temperature
+};
+
+// A "MAP x y tempC" line printed on either board's Serial (temperature mapping).
+struct MapPoint {
+  uint64_t t = 0;
+  int board = 0;
+  double x = 0, y = 0, temp = 0;  // what the sketch logged
+  Pose2 truePose;                 // where the robot really was when it was printed
+};
+struct MapScore {
+  int points = 0, uniquePoints = 0;  // unique = distinct 1 cm positions
+  double pointsPerM2 = 0;            // unique points per m^2 of field
+  double cellSize = 0.2;
+  int cellsVisited = 0, cellsTotal = 0;
+  double coverage = 0;               // fraction of grid cells with a logged point
+  double meanPosError = 0, maxPosError = 0;  // logged vs true position (m)
+  double meanTempError = 0;  // logged temp vs true temp where the robot really was
+  double meanMapError = 0;   // logged temp vs true temp at the logged position
 };
 
 struct Event { uint64_t t; std::string source, text; };
@@ -101,6 +120,8 @@ class Simulation {
   const std::vector<Sample>& samples() const { return samples_; }
   const std::vector<Event>& events() const { return events_; }
   bool hasEvent(const std::string& textPart, double fromMs = 0) const;
+  const std::vector<MapPoint>& mapPoints() const { return mapPoints_; }
+  MapScore scoreMap(double cellSize = 0.2) const;
   double maxLineOffset(double fromMs, double toMs) const;
 
   // ---- checks/report ----
@@ -135,6 +156,7 @@ class Simulation {
   std::vector<Event> events_;
   std::vector<FrameRecord> frames_;
   std::vector<CheckResult> checks_;
+  std::vector<MapPoint> mapPoints_;
   std::deque<std::pair<uint64_t, int>> pendingStatus_;
   int lastStatusFlags_ = -1;
   int lastFate_[2] = {-1, -1};

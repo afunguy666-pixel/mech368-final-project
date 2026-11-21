@@ -1,5 +1,6 @@
 #include "Simulation.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <fstream>
 #include <iostream>
@@ -155,6 +156,14 @@ void Simulation::start() {
   for (auto& b : boards_) {
     b->onSerialLine = [this](const Board& board, const std::string& line) {
       if (verbose) std::cout << "[" << timeText(board.now()) << "] " << board.name << "> " << line << "\n";
+      MapPoint p;
+      if (std::sscanf(line.c_str(), "MAP %lf %lf %lf", &p.x, &p.y, &p.temp) == 3 ||
+          std::sscanf(line.c_str(), "MAP,%lf,%lf,%lf", &p.x, &p.y, &p.temp) == 3) {
+        p.t = board.now();
+        p.board = board.id;
+        p.truePose = vehicle_->pose;
+        mapPoints_.push_back(p);
+      }
     };
     b->onWarning = [this](const Board& board, const std::string& m) {
       emitEvent(board.now(), board.name, "warning: " + m);
@@ -288,6 +297,8 @@ void Simulation::sample(uint64_t t) {
   s.remoteLink = air().activeFor(Remote, true) || air().activeFor(Remote, false);
   s.colliding = v.colliding;
   s.statusFlags = s.remoteLink ? lastStatusFlags_ : -1;
+  s.temp = v.sensedTemp + v.cfg.tempOffset;
+  s.tempTrue = world_.temperature(Vec2{v.pose.x, v.pose.y});
   samples_.push_back(s);
 }
 
@@ -342,6 +353,39 @@ double Simulation::maxLineOffset(double fromMs, double toMs) const {
   double m = 0;
   for (const auto& s : samples_)
     if (s.t >= toUs(fromMs) && s.t <= toUs(toMs)) m = std::max(m, s.lineOffset);
+  return m;
+}
+
+MapScore Simulation::scoreMap(double cellSize) const {
+  MapScore m;
+  m.cellSize = cellSize;
+  const int nx = std::max(1, static_cast<int>(std::ceil(world_.width / cellSize)));
+  const int ny = std::max(1, static_cast<int>(std::ceil(world_.height / cellSize)));
+  m.cellsTotal = nx * ny;
+  std::vector<bool> visited(static_cast<size_t>(m.cellsTotal), false);
+  std::vector<std::pair<long, long>> unique;
+  double pos = 0, temp = 0, map = 0;
+  for (const auto& p : mapPoints_) {
+    ++m.points;
+    const double e = std::hypot(p.x - p.truePose.x, p.y - p.truePose.y);
+    pos += e;
+    m.maxPosError = std::max(m.maxPosError, e);
+    temp += std::abs(p.temp - world_.temperature(Vec2{p.truePose.x, p.truePose.y}));
+    map += std::abs(p.temp - world_.temperature(Vec2{p.x, p.y}));
+    const std::pair<long, long> key(std::lround(p.x * 100), std::lround(p.y * 100));
+    if (std::find(unique.begin(), unique.end(), key) == unique.end()) unique.push_back(key);
+    const int cx = static_cast<int>(std::floor(p.x / cellSize)), cy = static_cast<int>(std::floor(p.y / cellSize));
+    if (cx >= 0 && cy >= 0 && cx < nx && cy < ny) visited[static_cast<size_t>(cy * nx + cx)] = true;
+  }
+  for (bool v : visited) m.cellsVisited += v ? 1 : 0;
+  m.coverage = static_cast<double>(m.cellsVisited) / m.cellsTotal;
+  m.uniquePoints = static_cast<int>(unique.size());
+  m.pointsPerM2 = m.uniquePoints / (world_.width * world_.height);
+  if (m.points) {
+    m.meanPosError = pos / m.points;
+    m.meanTempError = temp / m.points;
+    m.meanMapError = map / m.points;
+  }
   return m;
 }
 

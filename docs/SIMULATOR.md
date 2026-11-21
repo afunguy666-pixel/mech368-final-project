@@ -3,8 +3,9 @@
 Test the **unmodified** robot and remote sketches on a PC before the car
 exists. `scripts/run-fw-sim.sh` compiles `firmware/robot/robot.ino`,
 `firmware/remote/remote.ino` and the example sketches against host stand-ins
-for the Arduino core, ArduinoBLE, the Rev2 IMU (`Arduino_BMI270_BMM150`) and
-the gesture sensor (`Arduino_APDS9960`). Two virtual boards then run on a
+for the Arduino core, ArduinoBLE, the Rev2 IMU (`Arduino_BMI270_BMM150`), the
+gesture sensor (`Arduino_APDS9960`) and the temperature sensor
+(`Arduino_HS300x`). Two virtual boards then run on a
 virtual clock, connected by a simulated BLE radio. The robot board is wired to
 a virtual differential-drive vehicle on a virtual course.
 
@@ -41,6 +42,7 @@ For each run you get:
 | --- | --- |
 | `<scenario>.html` | Self-contained replay: top-down view, robot trail, sensor rays, LEDs, link/status flags, logic-analyser strip, events + serial log, checks. Open it in any browser. |
 | `<scenario>.csv` | 10 ms samples: pose, wheel speeds, motor duty, battery, line offset, LEDs, link, status flags, sensor readings |
+| `<scenario>.map.csv` | Temperature-map points the sketch printed (`MAP x y tempC`), with the robot's true position and the true temperature there |
 | `<scenario>.frames.csv` | Every BLE frame on the air: send/deliver time, direction, fate (delivered/lost/blocked/corrupted/link down), decoded Mech368 fields |
 | `<scenario>.log` | Timestamped events, both boards' `Serial` output, and the check results |
 
@@ -53,8 +55,8 @@ For each run you get:
 | Serial | Output is captured with timestamps. Scenario scripts can type input. |
 | BLE | Peripheral + central subset of ArduinoBLE 1.4: advertise/scan/connect/discover/subscribe, write without response, notify, event handlers (run inside `BLE.poll()`). Radio: 10 ms + 0–5 ms latency, in-order delivery, 2 s supervision timeout, randomised blocking connect/discover/subscribe durations. Faults: loss, bit corruption, one-way blocking ("connected but silent"), out of range, board power-off. |
 | Vehicle | Motor drivers `pwm_dir`, `in_in` (DRV8833 style), `en_in_in` (L298N/TB6612 style). First-order motor speed response scaled by battery voltage, deadband, exact differential-drive kinematics, quadrature encoders that fire your ISRs, collision circle. |
-| Sensors | Analog/digital reflective line sensors over tape, HC-SR04-style ultrasonic (trigger pulse + `pulseIn`), Sharp-style analog IR distance, battery divider, IMU gyro/accelerometer/magnetometer from the vehicle motion (with bias/noise), APDS gestures and proximity from the script. The remote's IMU follows a scripted hand tilt. |
-| Course | `sim/worlds/*.world`: tape lines, ovals, boxes, circles, straight or rounded border walls. The firmware link scenarios run on `course.world`. |
+| Sensors | Analog/digital reflective line sensors over tape, HC-SR04-style ultrasonic (trigger pulse + `pulseIn`), Sharp-style analog IR distance, battery divider, IMU gyro/accelerometer/magnetometer from the vehicle motion (with bias/noise), APDS gestures and proximity from the script, HS300x temperature from the world's temperature field with first-order lag, noise and offset (each read assumed to block ~10 ms). The remote's IMU follows a scripted hand tilt. |
+| Course | `sim/worlds/*.world`: tape lines, ovals, boxes, circles, straight or rounded border walls, and a temperature field (`ambient` plus `heat` hot/cold spots). The firmware link scenarios run on `course.world`. |
 
 All parameters live in two commented text files. **Every number in them is a
 placeholder.** Replace them with your wiring and bench measurements:
@@ -65,8 +67,9 @@ placeholder.** Replace them with your wiring and bench measurements:
   the course handout (5 cm black track, serpentine path, three cones, rounded
   field border). The figure has no dimensions, so the layout uses an assumed
   scale of about 2.0 m x 1.5 m. Measure the real track in KAIS 1220 and update
-  the coordinates. `oval.world` and `oval_obstacle.world` are simple practice
-  loops.
+  the coordinates. The hot corner (+12 °C) and cool corner (-8 °C) on 22 °C
+  ambient are also assumptions. `oval.world` and `oval_obstacle.world` are
+  simple practice loops.
 
 ## Writing a scenario
 
@@ -106,9 +109,33 @@ FWSIM_SCENARIO(my_estop_test, "E-stop during a link loss still latches") {
 | `frames()`, `statusSentBefore(ms)`, `lastCommandDelivered(ms)` | decoded BLE traffic |
 | `vehicle()` (`pose`, `travelled`, `collisions`, `distanceReading`...), `maxLineOffset` | physical state |
 | `serialContains(board, "text")`, `hasEvent("text")`, `samples()` | logs and trace |
+| `mapPoints()`, `scoreMap(cellSize)` | temperature-map points and score (see below) |
 
 Pins in `sim.levelAt(...)` are the same constants the sketch uses
 (`LED_BUILTIN`, `LEDR`...). LEDs on the Nano 33 BLE RGB pins are active-low.
+
+## Temperature mapping
+
+Any line of the form `MAP x y tempC` (or `MAP,x,y,tempC`), printed on either
+board's `Serial`, is collected as a map point. The simulator records the
+robot's true position at the moment the line is printed. A point relayed
+through the remote is printed later, which counts against its accuracy.
+`scoreMap()` and the replay's "Temperature map" panel then report the
+handout's mapping metrics:
+
+| Metric | Meaning |
+| --- | --- |
+| points, unique, density | logged points; distinct 1 cm positions; unique points per m² of field |
+| coverage | fraction of 0.2 m grid cells containing a point |
+| position error | logged position vs. true position when printed (mean, max) |
+| temp error | logged temperature vs. true air temperature where the robot really was |
+| map error | logged temperature vs. true temperature at the logged position (what the heat map shows) |
+
+The replay draws the true field underneath and the logged points on top,
+coloured with the same scale. Run `course_heat_map` to see it with the demo
+sketch. The demo enables mapping after it receives `pose X Y HEADING_DEG` on
+`Serial` (the known starting pose), calibrates the gyro bias while it waits,
+and estimates its pose from encoder distance and gyro heading.
 
 ## Your own sketches
 
@@ -149,6 +176,17 @@ how the vehicle file's pins reach ordinary Arduino code.
   also stops sending (including E-stop frames). Its commands would carry a
   stale challenge in that case anyway, and the robot's watchdog stops motion.
 
+- **Mapping lessons from the demo sketch** (simulated; the same mechanisms
+  apply on the board):
+  - Integrating each gyro reading as a fixed 10 ms (`gz * 0.01`) lost about
+    8° over the six 90° turns. The blocking temperature reads and `pulseIn`
+    calls make the loop skip IMU samples. The logged positions drifted to
+    17 cm mean / 42 cm maximum error. Integrating over the measured time
+    between reads (`micros()`) brought this to 1.6 cm / 6.4 cm.
+  - With a 2 s sensor time constant at 0.25 m/s, each reading describes the
+    air about 0.5 m back along the path. This smears the map (about 1.6 °C
+    mean error). Measure the real HS300x response time, then either drive
+    slower near the hot and cool areas or tag readings with an earlier pose.
 - **Course geometry (assumed scale): the field border is close to the
   track.** In `course.world` each bottom joint of the track lies about 19 cm
   from the border, and each top joint about 24 cm. A simple "stop if anything
@@ -168,9 +206,11 @@ how the vehicle file's pins reach ordinary Arduino code.
   The host build does **not** generate Arduino's automatic function
   prototypes: declare a function before using it. Sketch-local `.cpp`
   files are not compiled.
-- Libraries other than ArduinoBLE, `Arduino_BMI270_BMM150` and
-  `Arduino_APDS9960` (plus this repository's `libraries/`) are not
-  available. Add a stand-in under `sim/fwsim/hostduino/` if you need one.
+- Libraries other than ArduinoBLE, `Arduino_BMI270_BMM150`,
+  `Arduino_APDS9960` and `Arduino_HS300x` (plus this repository's
+  `libraries/`) are not available. The temperature field is a smooth
+  assumed model with no air currents, and the robot does not heat its own
+  sensor. Add a stand-in under `sim/fwsim/hostduino/` if you need one.
 - One boot per run: a board can be powered off, but not reset or powered
   on again within a scenario.
 - Vehicle physics has no wheel slip, inertia of the chassis, motor

@@ -8,9 +8,13 @@
 // Behaviour: wait for an UP gesture, follow the tape line with encoder speed
 // control, stop for obstacles closer than 20 cm, stop on a DOWN gesture, and
 // light the red LED when the battery is low.
+// Mapping: send "pose X Y HEADING_DEG" on Serial to give the starting pose.
+// The sketch then tracks its pose (encoder distance + gyro heading, gyro bias
+// calibrated while waiting) and prints "MAP x y tempC" every 150 ms.
 #include <Arduino.h>
 #include <Arduino_APDS9960.h>
 #include <Arduino_BMI270_BMM150.h>
+#include <Arduino_HS300x.h>
 
 const int LEFT_PWM = D5, LEFT_DIR = D4, RIGHT_PWM = D6, RIGHT_DIR = D7;
 const int LEFT_ENC_A = D2, LEFT_ENC_B = D3, RIGHT_ENC_A = D8, RIGHT_ENC_B = D9;
@@ -47,6 +51,11 @@ float linePosition = 0, lastLinePosition = 0;
 float obstacle = -1;                     // metres, -1 = nothing in range
 float odoX = 0, odoY = 0, odoHeading = 0, gyroHeading = 0;
 bool lowBattery = false;
+bool mapping = false;                    // set by the "pose" serial command
+float poseX = 0, poseY = 0, poseHeading = 0;  // encoder distance + gyro heading
+float gyroBias = 0, biasSum = 0;
+long biasCount = 0;
+unsigned long lastMap = 0, lastGyroUs = 0;
 unsigned long lastControl = 0, lastLine = 0, lastSonar = 0, lastBattery = 0, lastReport = 0;
 
 void drive(int pwmPin, int dirPin, float duty) {
@@ -104,6 +113,8 @@ void speedControl(float dt) {
   odoX += ds * cosf(odoHeading + dyaw / 2);
   odoY += ds * sinf(odoHeading + dyaw / 2);
   odoHeading += dyaw;
+  poseX += ds * cosf(poseHeading);
+  poseY += ds * sinf(poseHeading);
 
   const float kp = 0.02f, ki = 0.15f;
   integralLeft = constrain(integralLeft + (targetLeft - wl) * dt, -2.0f, 2.0f);
@@ -142,6 +153,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(RIGHT_ENC_A), rightEncoderIsr, CHANGE);
   if (!IMU.begin()) Serial.println("IMU init failed");
   if (!APDS.begin()) Serial.println("APDS init failed");
+  if (!HS300x.begin()) Serial.println("HS300x init failed");
   Serial.println("line follower ready: swipe UP to start, DOWN to stop");
 }
 
@@ -159,10 +171,38 @@ void loop() {
     }
   }
 
+  // "pose X Y HEADING_DEG": the known starting pose; enables mapping output.
+  if (Serial.available() > 0) {
+    String line = Serial.readStringUntil('\n');
+    line.trim();
+    if (line.startsWith("pose ")) {
+      line = line.substring(5);
+      const int a = line.indexOf(' '), b = line.indexOf(' ', a + 1);
+      if (a > 0 && b > a) {
+        poseX = line.substring(0, a).toFloat();
+        poseY = line.substring(a + 1, b).toFloat();
+        poseHeading = radians(line.substring(b + 1).toFloat());
+        mapping = true;
+        Serial.println("mapping enabled");
+      }
+    }
+  }
+
   float gx, gy, gz;
   if (IMU.gyroscopeAvailable()) {
     IMU.readGyroscope(gx, gy, gz);
-    gyroHeading += gz * 0.01f;  // 100 Hz samples, degrees
+    // Integrate over the real time since the last read, not a fixed 10 ms:
+    // blocking calls (temperature read, pulseIn) make the loop skip samples.
+    const unsigned long nowUs = micros();
+    const float dt = lastGyroUs ? (nowUs - lastGyroUs) / 1e6f : 0.01f;
+    lastGyroUs = nowUs;
+    if (state == WAITING) {  // standing still: estimate the gyro bias
+      biasSum += gz;
+      gyroBias = biasSum / ++biasCount;
+    } else {
+      gyroHeading += (gz - gyroBias) * dt;  // degrees
+      poseHeading += radians((gz - gyroBias) * dt);
+    }
   }
 
   if (now - lastSonar >= 60) {
@@ -196,6 +236,17 @@ void loop() {
   if (now - lastControl >= 20) {
     speedControl((now - lastControl) / 1000.0f);
     lastControl = now;
+  }
+
+  if (mapping && state == FOLLOWING && now - lastMap >= 150) {
+    lastMap = now;
+    const float celsius = HS300x.readTemperature();
+    Serial.print("MAP ");
+    Serial.print(poseX, 3);
+    Serial.print(' ');
+    Serial.print(poseY, 3);
+    Serial.print(' ');
+    Serial.println(celsius, 2);
   }
 
   if (now - lastBattery >= 500) {

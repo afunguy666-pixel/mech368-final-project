@@ -75,7 +75,7 @@ identifies the Mbed OS Nano package. The build target is `arduino:mbed_nano:nano
 
 Run the **unmodified** `robot.ino` and `remote.ino` on two virtual boards with a
 simulated BLE radio, plus a virtual vehicle (motors, encoders, line sensors,
-ultrasonic, IMU, gestures, battery) on a virtual course, using only Bash and a
+ultrasonic, IMU, gestures, battery, temperature) on the handout's field map, using only Bash and a
 C++17 compiler:
 
 ```sh
@@ -92,7 +92,7 @@ and the current findings on the Phase 1 link timing.
 
 | Path | Purpose |
 | --- | --- |
-| `sim/fwsim/hostduino/` | Host stand-ins for Arduino core, ArduinoBLE, BMI270/BMM150 IMU, APDS-9960 |
+| `sim/fwsim/hostduino/` | Host stand-ins for Arduino core, ArduinoBLE, BMI270/BMM150 IMU, APDS-9960, HS300x |
 | `sim/fwsim/` | Virtual boards, radio, vehicle/world models, replay viewer, scenarios |
 | `sim/examples/line_follower/` | Demo sketch (not course firmware) driving the virtual vehicle |
 

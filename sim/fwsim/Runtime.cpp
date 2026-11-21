@@ -3,6 +3,7 @@
 #include "Runtime.h"
 #include <Arduino_APDS9960.h>
 #include <Arduino_BMI270_BMM150.h>
+#include <Arduino_HS300x.h>
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -526,4 +527,19 @@ int APDS9960::readProximity() {
   Board& b = cur();
   b.spend(b.ioCallUs * 20);
   return b.io ? b.io->proximity(b) : 255;
+}
+
+// ---------------------------------------------------------------- HS300x ---
+HS300xClass HS300x;
+int HS300xClass::begin() { cur().spend(2000); return 1; }
+float HS300xClass::readTemperature(int units) {
+  Board& b = cur();
+  b.spend(10000);  // assumed: one blocking measurement
+  double c = 22.0;
+  if (b.io) b.io->temperature(b, c);
+  return static_cast<float>(units == FAHRENHEIT ? c * 9.0 / 5.0 + 32.0 : c);
+}
+float HS300xClass::readHumidity() {
+  cur().spend(10000);
+  return 40.0f;
 }

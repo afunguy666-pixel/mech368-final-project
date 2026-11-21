@@ -24,6 +24,8 @@ struct World {
   struct Box { Vec2 lo, hi; std::string name; };
   struct Circle { Vec2 c; double r = 0; std::string name; };
   struct Wall { Vec2 a, b; std::string name; };
+  // Temperature bump: ambient + delta * exp(-(d / radius)^2).
+  struct Heat { Vec2 c; double radius = 0, delta = 0; std::string name; };
 
   double width = 3.0, height = 2.0;
   Pose2 start;
@@ -31,6 +33,8 @@ struct World {
   std::vector<Box> boxes;
   std::vector<Circle> circles;
   std::vector<Wall> walls;
+  double ambient = 22.0;  // deg C
+  std::vector<Heat> heat;
   std::string source = "(built-in empty world)";
 
   static World load(const std::string& path);
@@ -42,6 +46,7 @@ struct World {
   double raycast(Vec2 origin, double yaw, double maxRange) const;
   bool collides(Vec2 centre, double radius, std::string* what) const;
   double lineLength() const;
+  double temperature(Vec2 p) const;  // true air temperature, deg C
 };
 
 // --------------------------------------------------------------- vehicle ---
@@ -81,6 +86,7 @@ struct VehicleConfig {
   double nominalVolts = 7.4;
   double leftScale = 1.0, rightScale = 1.0;  // effective wheel radius factors
   double gyroBiasDps = 0.0, gyroNoiseDps = 0.0;
+  double tempTau = 2.0, tempNoise = 0.05, tempOffset = 0.0;  // HS300x model
   MotorConfig left, right;
   EncoderConfig encLeft, encRight;
   std::vector<LineSensorConfig> lineSensors;
@@ -120,6 +126,7 @@ class Vehicle : public ScriptedIO {
   double dutyL = 0, dutyR = 0;     // signed motor command -1..1
   double speed = 0, yawRate = 0, accel = 0;
   double batteryVolts = 7.4;
+  double sensedTemp = 0;  // lagged temperature at the sensor, deg C
   double travelled = 0;
   uint64_t timeUs = 0, stepUs = 500;
   bool colliding = false;
@@ -141,6 +148,7 @@ class Vehicle : public ScriptedIO {
   bool pulseIn(Board& b, int pin, int state, uint64_t timeoutUs, uint64_t& durationUs) override;
   void outputChanged(Board& b, int pin) override;
   ImuSample imu(Board& b) override;
+  bool temperature(Board& b, double& celsius) override;
   std::mt19937 rng{368};
 
  private:

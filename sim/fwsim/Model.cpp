@@ -176,6 +176,12 @@ World World::load(const std::string& path) {
     } else if (cmd == "border") {
       const Vec2 c[4] = {{0, 0}, {w.width, 0}, {w.width, w.height}, {0, w.height}};
       for (int i = 0; i < 4; ++i) w.walls.push_back(Wall{c[i], c[(i + 1) % 4], "border"});
+    } else if (cmd == "ambient") {
+      w.ambient = st.num(1);
+    } else if (cmd == "heat") {
+      Heat h{Vec2{st.num(1), st.num(2)}, st.num(3), st.num(4), st.words.size() > 5 ? st.words[5] : "heat"};
+      if (h.radius <= 0) st.fail("heat radius must be positive");
+      w.heat.push_back(h);
     } else if (cmd == "rounded_border") {
       // Walls around the floor with rounded corners of radius R.
       const double r = std::max(0.0, std::min(st.num(1), std::min(w.width, w.height) / 2));
@@ -240,6 +246,15 @@ bool World::collides(Vec2 p, double r, std::string* what) const {
   for (const auto& w : walls)
     if (segmentDistance(p, w.a, w.b) < r) { if (what) *what = w.name; return true; }
   return false;
+}
+
+double World::temperature(Vec2 p) const {
+  double t = ambient;
+  for (const auto& h : heat) {
+    const double d = dist(p, h.c) / h.radius;
+    t += h.delta * std::exp(-d * d);
+  }
+  return t;
 }
 
 double World::lineLength() const {
@@ -330,6 +345,11 @@ VehicleConfig VehicleConfig::load(const std::string& path) {
       d.maxRange = st.num("max", d.maxRange);
       d.noise = st.num("noise", d.noise);
       v.distance.push_back(d);
+    } else if (cmd == "temperature") {
+      v.tempTau = st.num("tau", v.tempTau);
+      v.tempNoise = st.num("noise", v.tempNoise);
+      v.tempOffset = st.num("offset", v.tempOffset);
+      if (v.tempTau <= 0) st.fail("temperature tau must be positive (seconds)");
     } else if (cmd == "battery") {
       v.battery.pin = st.pin("pin", false);
       v.battery.divider = st.num("divider", v.battery.divider);
@@ -391,7 +411,8 @@ ImuSample ScriptedIO::imu(Board& b) {
 
 // --------------------------------------------------------------- vehicle ---
 Vehicle::Vehicle(const VehicleConfig& config, const World& w)
-    : cfg(config), world(w), pose(w.start), batteryVolts(config.battery.volts) {
+    : cfg(config), world(w), pose(w.start), batteryVolts(config.battery.volts),
+      sensedTemp(w.temperature(Vec2{w.start.x, w.start.y})) {
   trigRise.assign(cfg.distance.size(), kNever);
   trigFall.assign(cfg.distance.size(), kNever);
 }
@@ -478,6 +499,7 @@ void Vehicle::step() {
   accel = (speed - previousSpeed) / dt;
   pose = next;
   batteryVolts = std::max(0.0, batteryVolts - cfg.battery.drainPerMinute * dt / 60.0);
+  sensedTemp += (world.temperature(Vec2{pose.x, pose.y}) - sensedTemp) * std::min(1.0, dt / cfg.tempTau);
   timeUs += stepUs;
   if (onSample && timeUs >= nextSampleUs) {
     onSample(timeUs);
@@ -586,6 +608,11 @@ bool Vehicle::pulseIn(Board& b, int pin, int state, uint64_t timeoutUs, uint64_t
     return true;
   }
   return false;
+}
+
+bool Vehicle::temperature(Board&, double& celsius) {
+  celsius = sensedTemp + cfg.tempOffset + cfg.tempNoise * gauss(rng);
+  return true;
 }
 
 ImuSample Vehicle::imu(Board&) {

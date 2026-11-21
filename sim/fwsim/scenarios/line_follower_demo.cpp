@@ -116,3 +116,42 @@ FWSIM_SCENARIO(course_serpentine, "Demo on the handout field without cones: foll
               "sensor bar stays within 6 cm of the line centre through all turns");
   FWSIM_CHECK(sim, sim.vehicle().collisions == 0, "no collisions");
 }
+
+FWSIM_SCENARIO(course_heat_map, "Demo on the handout field: log temperature along the track and score the map") {
+  demo(sim, "sim/worlds/course.world");
+  // Pure mapping run along the track (see course_serpentine for why the
+  // border is removed for this demo sketch).
+  sim.at(0, [](Simulation& s) {
+    s.world().circles.clear();
+    s.world().walls.clear();
+  }, "cones and border walls removed: mapping run along the track");
+  sim.serialInput(Robot, 100, "pose 0.4425 0.12 90\n");  // known initial pose
+  sim.gesture(2000, GESTURE_UP);                        // 2 s still: gyro bias calibration
+  sim.gesture(26000, GESTURE_DOWN);
+  sim.runUntil(27000);
+  const MapScore m = sim.scoreMap();
+  char buf[256];
+  std::snprintf(buf, sizeof buf,
+                "%d map points (%.0f unique/m^2), %.0f%% of 0.2 m cells, position error %.1f cm mean / %.1f cm max, "
+                "temperature error %.2f C, map error %.2f C",
+                m.points, m.pointsPerM2, m.coverage * 100, m.meanPosError * 100, m.maxPosError * 100,
+                m.meanTempError, m.meanMapError);
+  sim.log("check", buf);
+  double hot = 0, cool = 0;
+  int nHot = 0, nCool = 0;
+  for (const auto& h : sim.world().heat)
+    for (const auto& p : sim.mapPoints())
+      if (std::hypot(p.x - h.c.x, p.y - h.c.y) < 0.35) {
+        if (h.delta > 0) { hot += p.temp; ++nHot; }
+        else { cool += p.temp; ++nCool; }
+      }
+  const double ambient = sim.world().ambient;
+  FWSIM_CHECK(sim, m.points >= 100, "at least 100 temperature points logged");
+  FWSIM_CHECK(sim, m.meanPosError < 0.10, "logged positions are within 10 cm of the truth on average");
+  FWSIM_CHECK(sim, nHot > 0 && hot / nHot > ambient + 3, "map shows the hot corner warmer than ambient");
+  FWSIM_CHECK(sim, nCool > 0 && cool / nCool < ambient - 2, "map shows the cool corner colder than ambient");
+  // Most of the remaining error is HS300x lag: with tau = 2 s at 0.25 m/s a
+  // reading describes the air ~0.5 m back along the path. Compensating for the
+  // lag (e.g. tagging readings with the pose ~tau earlier) would reduce it.
+  FWSIM_CHECK(sim, m.meanMapError < 2.5, "mapped temperatures are within 2.5 C of the true field on average");
+}

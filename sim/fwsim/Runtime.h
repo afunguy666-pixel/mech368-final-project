@@ -59,6 +59,7 @@ class BoardIO {
   virtual bool gestureDue(Board&) { return false; }
   virtual int takeGesture(Board&) { return -1; }
   virtual int proximity(Board&) { return 255; }
+  virtual bool temperature(Board&, double&) { return false; }  // deg C
 };
 
 struct PinState {

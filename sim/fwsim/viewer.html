@@ -103,6 +103,12 @@ h2:first-child { margin-top: 0; }
     <div class="bars" id="bars"></div>
     <h2 id="sensH">Sensors</h2>
     <div class="bars" id="sensors"></div>
+    <div id="mapBox" hidden>
+      <h2>Temperature map</h2>
+      <label><input type="checkbox" id="showHeat" checked> true field</label>
+      <label><input type="checkbox" id="showMap" checked> logged points</label>
+      <div class="kv" id="mapKv" style="margin-top:6px"></div>
+    </div>
     <h2>Checks</h2>
     <ul class="checks" id="checks"></ul>
   </aside>
@@ -142,6 +148,32 @@ function fit(canvas) {
   const ctx = canvas.getContext('2d'); ctx.setTransform(d, 0, 0, d, 0, 0); return [ctx, r.width, h];
 }
 
+const heatSpan = Math.max(1, ...W.heat.map(h => Math.abs(h[3])));
+function heatColor(t, alpha) {
+  const v = Math.max(-1, Math.min(1, (t - W.ambient) / heatSpan));
+  const [r, g, b] = v >= 0 ? [220, 60, 40] : [40, 110, 230];
+  return `rgba(${r},${g},${b},${(alpha * Math.abs(v)).toFixed(3)})`;
+}
+function trueTemp(x, y) {
+  let t = W.ambient;
+  for (const [cx, cy, r, d] of W.heat) { const q = Math.hypot(x - cx, y - cy) / r; t += d * Math.exp(-q * q); }
+  return t;
+}
+let heatCache = null;
+function heatImage() {  // true field, 2 cm per pixel, drawn scaled and smoothed
+  if (heatCache) return heatCache;
+  const nx = Math.ceil(W.width / 0.02), ny = Math.ceil(W.height / 0.02);
+  const c = document.createElement('canvas'); c.width = nx; c.height = ny;
+  const g = c.getContext('2d'), img = g.createImageData(nx, ny);
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const v = Math.max(-1, Math.min(1, (trueTemp((i + 0.5) * 0.02, W.height - (j + 0.5) * 0.02) - W.ambient) / heatSpan));
+    const o = 4 * (j * nx + i), rgb = v >= 0 ? [220, 60, 40] : [40, 110, 230];
+    img.data[o] = rgb[0]; img.data[o + 1] = rgb[1]; img.data[o + 2] = rgb[2];
+    img.data[o + 3] = Math.round(255 * 0.55 * Math.abs(v));
+  }
+  g.putImageData(img, 0, 0);
+  return heatCache = c;
+}
 function drawWorld() {
   const [ctx, w, h] = fit($('world'));
   const k = Math.min(w / W.width, h / W.height);
@@ -150,6 +182,7 @@ function drawWorld() {
   ctx.strokeStyle = css('--line'); ctx.lineWidth = 1;
   for (let x = 0; x <= W.width + 1e-9; x += 0.5) { ctx.beginPath(); ctx.moveTo(X(x), 0); ctx.lineTo(X(x), h); ctx.stroke(); }
   for (let y = 0; y <= W.height + 1e-9; y += 0.5) { ctx.beginPath(); ctx.moveTo(0, Y(y)); ctx.lineTo(w, Y(y)); ctx.stroke(); }
+  if (W.heat.length && $('showHeat').checked) ctx.drawImage(heatImage(), 0, 0, W.width * k, W.height * k);
   ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = css('--tape');
   for (const l of W.lines) {
     ctx.lineWidth = Math.max(1.5, l.w * k); ctx.beginPath();
@@ -160,6 +193,14 @@ function drawWorld() {
   for (const [x, y, r] of W.circles) { ctx.beginPath(); ctx.arc(X(x), Y(y), r * k, 0, 7); ctx.fill(); }
   ctx.strokeStyle = css('--wall'); ctx.lineWidth = 3;
   for (const [ax, ay, bx, by] of W.walls) { ctx.beginPath(); ctx.moveTo(X(ax), Y(ay)); ctx.lineTo(X(bx), Y(by)); ctx.stroke(); }
+  if (DATA.map.length && $('showMap').checked) {
+    const now = S.t[idx];
+    for (const [t, mx, my, mt] of DATA.map) {
+      if (t > now) break;
+      ctx.fillStyle = heatColor(mt, 1); ctx.strokeStyle = css('--ink'); ctx.lineWidth = 0.6;
+      ctx.beginPath(); ctx.arc(X(mx), Y(my), 3.2, 0, 7); ctx.fill(); ctx.stroke();
+    }
+  }
   // trail
   ctx.strokeStyle = css('--trail'); ctx.globalAlpha = 0.45; ctx.lineWidth = 2; ctx.beginPath();
   for (let i = 0; i <= idx; i++) i ? ctx.lineTo(X(S.x[i]), Y(S.y[i])) : ctx.moveTo(X(S.x[i]), Y(S.y[i]));
@@ -250,7 +291,8 @@ function panel() {
   $('kv').innerHTML = [['x, y', S.x[idx].toFixed(3) + ', ' + S.y[idx].toFixed(3) + ' m'],
     ['heading', (S.yaw[idx] * 180 / Math.PI).toFixed(1) + '°'], ['speed', (speedMs * 100).toFixed(1) + ' cm/s'],
     ['battery', S.batt[idx].toFixed(2) + ' V'],
-    ['line offset', W.lines.length ? (S.off[idx] * 1000).toFixed(1) + ' mm' : '—']]
+    ['line offset', W.lines.length ? (S.off[idx] * 1000).toFixed(1) + ' mm' : '—'],
+    ['temperature', S.temp[idx].toFixed(1) + ' °C sensed / ' + S.ttrue[idx].toFixed(1) + ' true']]
     .map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('');
   $('bars').innerHTML = bar('duty L', S.ul[idx], S.ul[idx].toFixed(2)) + bar('duty R', S.ur[idx], S.ur[idx].toFixed(2)) +
     bar('wheel L', S.wl[idx] / 40, S.wl[idx].toFixed(1)) + bar('wheel R', S.wr[idx] / 40, S.wr[idx].toFixed(1));
@@ -261,7 +303,11 @@ function panel() {
     const future = lt > t; li.classList.toggle('future', future); li.classList.remove('now');
     if (!future) current = li;
   }
-  if (current) { current.classList.add('now'); if (playing || seeking) current.scrollIntoView({ block: 'nearest' }); }
+  if (current) { current.classList.add('now'); if (playing || seeking) {
+    const box = $('log'), top = current.offsetTop - box.offsetTop;  // scroll the log only, not the page
+    if (top < box.scrollTop || top > box.scrollTop + box.clientHeight - current.offsetHeight)
+      box.scrollTop = top - box.clientHeight / 2;
+  } }
 }
 let seeking = false;
 function render() { drawWorld(); drawStrip(); panel(); }
@@ -287,6 +333,18 @@ $('strip').onclick = e => {
   const r = e.target.getBoundingClientRect(), left = 78, w = r.width - left - 4;
   seeking = true; setIdx(Math.round((e.clientX - r.left - left) / w * (N - 1))); seeking = false;
 };
+if (DATA.map.length || W.heat.length) {
+  $('mapBox').hidden = false;
+  const m = DATA.mapScore;
+  $('mapKv').innerHTML = (DATA.map.length ? [
+    ['points', m.points + ' (' + m.unique + ' unique)'], ['density', m.perM2 + ' /m²'],
+    ['coverage', (m.coverage * 100).toFixed(0) + '% of ' + m.cell + ' m cells'],
+    ['position error', (m.posErr * 100).toFixed(1) + ' cm mean, ' + (m.maxPosErr * 100).toFixed(1) + ' max'],
+    ['temp error', m.tempErr.toFixed(2) + ' °C (sensor lag + noise)'],
+    ['map error', m.mapErr.toFixed(2) + ' °C at logged positions']] : [['points', 'none logged (print "MAP x y tempC")']])
+    .map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('');
+  $('showHeat').onchange = $('showMap').onchange = render;
+}
 logItems.forEach(([lt, li]) => { li.style.cursor = 'pointer'; li.onclick = () => {
   let i = 0; while (i < N - 1 && S.t[i + 1] <= lt) i++; setIdx(i); }; });
 document.addEventListener('keydown', e => {

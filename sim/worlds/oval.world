@@ -9,6 +9,8 @@
 #   box X0 Y0 X1 Y1 [name]       rectangular obstacle
 #   circle CX CY R [name]        round obstacle
 #   wall X0 Y0 X1 Y1 [name]      thin wall
+#   ambient C                    air temperature (default 22)
+#   heat X Y RADIUS DELTA [name] hot (+) or cold (-) spot: ambient + DELTA*exp(-(d/RADIUS)^2)
 # Practice loop, NOT the official course (see course.world, from the handout).
 size 3.0 2.0
 border

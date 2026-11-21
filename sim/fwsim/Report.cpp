@@ -67,7 +67,8 @@ void Simulation::writeReport(const std::string& dir, const std::string& name,
   {
     std::ofstream f(base + ".csv");
     f << "t_ms,x_m,y_m,yaw_rad,left_rad_s,right_rad_s,left_duty,right_duty,battery_v,"
-         "line_offset_m,robot_led,remote_led,robot_link,remote_link,status_flags,colliding";
+         "line_offset_m,robot_led,remote_led,robot_link,remote_link,status_flags,colliding,"
+         "temp_c,true_temp_c";
     for (const auto& s : vc.lineSensors) f << ",line_" << s.name;
     for (const auto& d : vc.distance) f << ",dist_" << d.name << "_m";
     f << "\n";
@@ -76,11 +77,22 @@ void Simulation::writeReport(const std::string& dir, const std::string& name,
         << num(s.pose.yaw, 5) << ',' << num(s.omegaL, 3) << ',' << num(s.omegaR, 3) << ','
         << num(s.dutyL, 3) << ',' << num(s.dutyR, 3) << ',' << num(s.battery, 3) << ','
         << num(s.lineOffset, 4) << ',' << s.robotLed << ',' << s.remoteLed << ','
-        << s.robotLink << ',' << s.remoteLink << ',' << s.statusFlags << ',' << s.colliding;
+        << s.robotLink << ',' << s.remoteLink << ',' << s.statusFlags << ',' << s.colliding << ','
+        << num(s.temp, 3) << ',' << num(s.tempTrue, 3);
       for (double v : s.line) f << ',' << num(v, 3);
       for (double v : s.distance) f << ',' << (std::isfinite(v) ? num(v, 4) : "");
       f << "\n";
     }
+  }
+
+  // ---------------------------------------------------------- map points ---
+  if (!mapPoints_.empty()) {
+    std::ofstream f(base + ".map.csv");
+    f << "t_ms,board,logged_x_m,logged_y_m,logged_temp_c,true_x_m,true_y_m,true_temp_c\n";
+    for (const auto& p : mapPoints_)
+      f << num(p.t / 1000.0, 1) << ',' << boards_[p.board]->name << ',' << num(p.x) << ',' << num(p.y) << ','
+        << num(p.temp, 2) << ',' << num(p.truePose.x) << ',' << num(p.truePose.y) << ','
+        << num(world_.temperature(Vec2{p.truePose.x, p.truePose.y}), 2) << "\n";
   }
 
   // ------------------------------------------------------ radio frames ---
@@ -154,6 +166,12 @@ void Simulation::writeReport(const std::string& dir, const std::string& name,
     const auto& w = world_.walls[i];
     d << (i ? "," : "") << "[" << num(w.a.x) << "," << num(w.a.y) << "," << num(w.b.x) << "," << num(w.b.y) << "]";
   }
+  d << "],\"ambient\":" << num(world_.ambient) << ",\"heat\":[";
+  for (size_t i = 0; i < world_.heat.size(); ++i) {
+    const auto& h = world_.heat[i];
+    d << (i ? "," : "") << "[" << num(h.c.x) << "," << num(h.c.y) << "," << num(h.radius) << ","
+      << num(h.delta) << "," << json(h.name) << "]";
+  }
   d << "]},\"vehicle\":{\"track\":" << num(vc.trackWidth) << ",\"wheel\":" << num(vc.wheelRadius)
     << ",\"body\":" << num(vc.bodyRadius) << ",\"source\":" << json(vc.source) << ",\"line\":[";
   for (size_t i = 0; i < vc.lineSensors.size(); ++i)
@@ -183,6 +201,8 @@ void Simulation::writeReport(const std::string& dir, const std::string& name,
     << ",\"link\":" << column(S, [](const Sample& s) { return (s.robotLink ? 1 : 0) + (s.remoteLink ? 2 : 0); }, 0)
     << ",\"flags\":" << column(S, [](const Sample& s) { return s.statusFlags; }, 0)
     << ",\"hit\":" << column(S, [](const Sample& s) { return s.colliding ? 1 : 0; }, 0)
+    << ",\"temp\":" << column(S, [](const Sample& s) { return s.temp; }, 2)
+    << ",\"ttrue\":" << column(S, [](const Sample& s) { return s.tempTrue; }, 2)
     << ",\"line\":[";
   for (size_t i = 0; i < vc.lineSensors.size(); ++i)
     d << (i ? "," : "") << column(S, [i](const Sample& s) { return i < s.line.size() ? s.line[i] : 0.0; }, 2);
@@ -195,7 +215,19 @@ void Simulation::writeReport(const std::string& dir, const std::string& name,
   d << "]},\"log\":[";
   for (size_t i = 0; i < lines.size(); ++i)
     d << (i ? "," : "") << "[" << num(lines[i].t / 1000.0, 1) << "," << json(lines[i].text) << "]";
-  d << "],\"checks\":[";
+  d << "],\"map\":[";
+  for (size_t i = 0; i < mapPoints_.size(); ++i) {
+    const auto& p = mapPoints_[i];
+    d << (i ? "," : "") << "[" << num(p.t / 1000.0, 1) << "," << num(p.x) << "," << num(p.y) << ","
+      << num(p.temp, 2) << "," << num(p.truePose.x) << "," << num(p.truePose.y) << "]";
+  }
+  const MapScore ms = scoreMap();
+  d << "],\"mapScore\":{\"points\":" << ms.points << ",\"unique\":" << ms.uniquePoints
+    << ",\"perM2\":" << num(ms.pointsPerM2, 1) << ",\"coverage\":" << num(ms.coverage, 3)
+    << ",\"cell\":" << num(ms.cellSize, 2) << ",\"posErr\":" << num(ms.meanPosError, 4)
+    << ",\"maxPosErr\":" << num(ms.maxPosError, 4) << ",\"tempErr\":" << num(ms.meanTempError, 3)
+    << ",\"mapErr\":" << num(ms.meanMapError, 3) << "}";
+  d << ",\"checks\":[";
   for (size_t i = 0; i < checks_.size(); ++i)
     d << (i ? "," : "") << "[" << (checks_[i].ok ? "true" : "false") << "," << json(checks_[i].text) << ","
       << num(checks_[i].t / 1000.0, 1) << "]";
