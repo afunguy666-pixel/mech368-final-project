@@ -10,7 +10,7 @@
 两块 Nano 33 BLE Sense Rev2 用 ArduinoBLE 通信。课程要求：最多 500 ms 内没有有效报文时
 电机速度归零；两端都要有闪烁的断链指示；遥控器发出的急停要一直锁存，
 直到在机器人的 APDS-9960 上做出手势。直连版固件通过 D8 控制 DRV8833，并读取板载 APDS。
-带载停车时间待实测。遥控器 IMU 驾驶和实体急停输入待接入。
+手持 D2 支持常开按钮对地急停。带载停车时间、实体按钮时延待实测。独立 0004 特征传送位姿与诊断。[遥测格式与记录工具](TELEMETRY.zh-CN.md)
 
 机器人 = 外设/服务端；遥控器 = 中心设备/客户端。服务 UUID 为
 `c4130001-3680-4f01-9e10-627e70bca001`。指令特征值把 `0001` 换成 `0002`，
@@ -65,7 +65,7 @@ ACK 表示协议层接受了这条指令，不代表电机动了。
 
 ## 非阻塞行为的局限
 
-ArduinoBLE 1.4.1 公开的连接、服务发现、订阅和断开 API 在内部是同步的。
+ArduinoBLE 公开的连接、服务发现、订阅和断开 API 在内部是同步的。
 遥控器把它们放在不同的循环阶段中执行，并把 ATT 超时设为 100 ms；
 一次服务发现可能包含多次这样的等待。重试间隔为 1 s。机器人从不执行中心端的服务发现。
 稳态的应用层传输使用无响应写入和通知，而不是 ATT 请求/响应等待。
@@ -85,8 +85,8 @@ CRC、UUID、会话号和挑战码都不是安全认证。会话号由运行时�
 
 ```
 bash scripts/test-host.sh
-arduino-cli core install arduino:mbed_nano@4.4.1
-arduino-cli lib install ArduinoBLE@1.4.1 Arduino_APDS9960@1.0.4 Arduino_BMI270_BMM150@1.2.4
+arduino-cli core install arduino:mbed_nano@4.6.0
+arduino-cli lib install ArduinoBLE@2.1.1 Arduino_APDS9960@1.0.4 Arduino_BMI270_BMM150@1.2.4
 bash scripts/compile-firmware.sh
 ```
 
