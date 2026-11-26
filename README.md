@@ -18,6 +18,7 @@ format, timing, setup API blocking limitations and unperformed hardware tests.
 | `firmware/remote/` | Remote sketch; integration point for pose estimation, BLE, and the E-stop request |
 | `libraries/Mech368BLE/` | Portable packet codec, receiver and remote ACK tracking |
 | `libraries/Mech368Safety/` | Portable state machine shared with the host test |
+| `libraries/Mech368Line/` | IR line sensing, PD line follower, corner/lost-line/detour state machine, kinematics and odometry ([docs/LINE_FOLLOWING.md](docs/LINE_FOLLOWING.md)); simulation-tested, not yet in the robot firmware |
 | `tests/` | Deterministic host assertions for watchdog and E-stop behavior |
 | `.github/workflows/ci.yml` | Independent host-test, firmware-simulator and board-compile jobs; no uploads to boards |
 
@@ -97,6 +98,7 @@ and the current findings on the Phase 1 link timing.
 | `sim/fwsim/hostduino/` | Host stand-ins for Arduino core, ArduinoBLE, BMI270/BMM150 IMU, APDS-9960, HS300x |
 | `sim/fwsim/` | Virtual boards, radio, vehicle/world models, replay viewer, scenarios |
 | `sim/examples/line_follower/` | Demo sketch (not course firmware) driving the virtual vehicle |
+| `sim/examples/line_tracker/` | Example sketch for `Mech368Line` with the kit's IR pairs, SN754410 and encoders (not yet behind the safety gate) |
 
 ## Software-in-the-loop (SIL) simulator
 

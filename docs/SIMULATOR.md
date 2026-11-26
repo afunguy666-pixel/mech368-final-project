@@ -57,7 +57,7 @@ For each run you get:
 | Serial | Output is captured with timestamps. Scenario scripts can type input. |
 | BLE | Peripheral + central subset of ArduinoBLE 1.4: advertise/scan/connect/discover/subscribe, write without response, notify, event handlers (run inside `BLE.poll()`). Radio: 10 ms + 0–5 ms latency, in-order delivery, 2 s supervision timeout, randomised blocking connect/discover/subscribe durations. Faults: loss, bit corruption, one-way blocking ("connected but silent"), out of range, board power-off. |
 | Vehicle | Motor drivers `pwm_dir`, `in_in` (DRV8833 style), `en_in_in` (L298N/TB6612 style). First-order motor speed response scaled by battery voltage, deadband, exact differential-drive kinematics, quadrature encoders that fire your ISRs, collision circle. |
-| Sensors | Analog/digital reflective line sensors over tape, HC-SR04-style ultrasonic (trigger pulse + `pulseIn`), Sharp-style analog IR distance, battery divider, IMU gyro/accelerometer/magnetometer from the vehicle motion (with bias/noise), APDS gestures and proximity from the script, HS300x temperature from the world's temperature field with first-order lag, noise and offset (each read assumed to block ~10 ms). The remote's IMU follows a scripted hand tilt. |
+| Sensors | Analog/digital reflective line sensors over tape, HC-SR04-style ultrasonic (trigger pulse + `pulseIn`), Sharp-style analog IR distance, reflective IR obstacle pairs through a comparator (`ir_proximity`: digital output within `range` over a `fov_deg` beam), comparator line sensors also readable with `analogRead` (0 V / 3.3 V), battery divider, IMU gyro/accelerometer/magnetometer from the vehicle motion (with bias/noise), APDS gestures and proximity from the script, HS300x temperature from the world's temperature field with first-order lag, noise and offset (each read assumed to block ~10 ms). The remote's IMU follows a scripted hand tilt. |
 | Course | `sim/worlds/*.world`: tape lines, ovals, boxes, circles, straight or rounded border walls, and a temperature field (`ambient` plus `heat` hot/cold spots). The firmware link scenarios run on `course.world`. |
 
 All parameters live in two commented text files. **Every number in them is a
@@ -154,6 +154,11 @@ FWSIM_SKETCHES=/path/to/remote_v2 bash scripts/run-fw-sim.sh --seeds 10 --sketch
 motors with encoder speed control, follows the line, stops for obstacles,
 starts and stops on gestures, and lights the red LED on low battery. It shows
 how the vehicle file's pins reach ordinary Arduino code.
+
+`sim/examples/line_tracker` runs `libraries/Mech368Line` (calibrated IR array,
+PD line following, 90-degree corners, cone detours) on
+`sim/vehicles/ir_tracker.vehicle` and `ir_tracker_lm393.vehicle`. Its
+`track_*` scenarios are described in [LINE_FOLLOWING.md](LINE_FOLLOWING.md).
 
 ## Findings on the Phase 1 firmware (2026-11-21)
 

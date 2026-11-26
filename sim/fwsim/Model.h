@@ -67,11 +67,16 @@ struct LineSensorConfig {
   double spot = 0.004;                  // sensing spot radius (m)
 };
 struct DistanceConfig {
-  enum Kind { Ultrasonic, AnalogIR } kind = Ultrasonic;
+  // IRProximity: reflective IR pair (e.g. LTE-4206 + LTR-4206) through a
+  // comparator (LM393): a digital output that switches when an object is
+  // within maxRange anywhere in a beam of half-angle halfFov.
+  enum Kind { Ultrasonic, AnalogIR, IRProximity } kind = Ultrasonic;
   std::string name;
   int trig = -1, echo = -1, pin = -1;
   double x = 0, y = 0, yaw = 0;  // mount pose (m, rad)
   double minRange = 0.02, maxRange = 2.0, noise = 0.002;
+  double halfFov = 0.0;          // rad (IRProximity)
+  int onLevel = 0;               // IRProximity output level with an object in range
 };
 struct BatteryConfig {
   int pin = -1;

@@ -18,6 +18,7 @@
 | `firmware/robot/` | 机器人程序；BLE、本地恢复和电机输出闸门的集成点 |
 | `firmware/remote/` | 遥控器程序；姿态估计、BLE 和急停请求的集成点 |
 | `libraries/Mech368BLE/` | 可移植的报文编解码、接收器和遥控器端 ACK 跟踪 |
+| `libraries/Mech368Line/` | 红外巡线传感、PD 巡线、弯道/丢线/绕障状态机、运动学和里程计（[docs/LINE_FOLLOWING.zh-CN.md](docs/LINE_FOLLOWING.zh-CN.md)）；已通过仿真测试，尚未接入机器人固件 |
 | `libraries/Mech368Safety/` | 可移植的状态机，与主机测试共用 |
 | `tests/` | 针对看门狗和急停行为的确定性主机测试 |
 | `.github/workflows/ci.yml` | 相互独立的主机测试、固件模拟和开发板编译任务；不会烧录任何开发板 |
@@ -91,6 +92,7 @@ bash scripts/run-fw-sim.sh --seeds 20 link_stability   # 用 20 个随机种子�
 | `sim/fwsim/hostduino/` | 在电脑上替代 Arduino 核心库、ArduinoBLE、BMI270/BMM150 IMU、APDS-9960、HS300x 的模拟库 |
 | `sim/fwsim/` | 虚拟开发板、无线链路、小车/场地模型、回放查看器、测试场景 |
 | `sim/examples/line_follower/` | 驱动虚拟小车的示例程序（不是课程固件） |
+| `sim/examples/line_tracker/` | `Mech368Line` 的示例程序，使用套件里的红外对管、SN754410 和编码器（尚未经过安全闸门） |
 
 ## 软件在环（SIL）模拟器
 

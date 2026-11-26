@@ -326,17 +326,26 @@ VehicleConfig VehicleConfig::load(const std::string& path) {
       s.onLevel = static_cast<int>(st.num("on_level", 1));
       s.spot = st.num("spot", s.spot);
       v.lineSensors.push_back(s);
-    } else if (cmd == "ultrasonic" || cmd == "ir_distance") {
+    } else if (cmd == "ultrasonic" || cmd == "ir_distance" || cmd == "ir_proximity") {
       DistanceConfig d;
-      d.kind = cmd == "ultrasonic" ? DistanceConfig::Ultrasonic : DistanceConfig::AnalogIR;
+      d.kind = cmd == "ultrasonic"    ? DistanceConfig::Ultrasonic
+               : cmd == "ir_distance" ? DistanceConfig::AnalogIR
+                                      : DistanceConfig::IRProximity;
       d.name = st.words.size() > 1 ? st.words[1] : cmd;
       if (d.kind == DistanceConfig::Ultrasonic) {
         d.trig = st.pin("trig", true);
         d.echo = st.pin("echo", true);
-      } else {
+      } else if (d.kind == DistanceConfig::AnalogIR) {
         d.pin = st.pin("pin", true);
         d.minRange = 0.10;
         d.maxRange = 0.80;
+      } else {
+        d.pin = st.pin("pin", true);
+        d.minRange = 0.0;
+        d.maxRange = st.num("range", 0.08);
+        d.noise = 0.003;
+        d.halfFov = st.num("fov_deg", 20) * kPi / 360.0;
+        d.onLevel = static_cast<int>(st.num("on_level", 0));
       }
       d.x = st.num("x", 0);
       d.y = st.num("y", 0);
@@ -524,7 +533,9 @@ double Vehicle::lineSensorCoverage(size_t i) const {
 double Vehicle::distanceReading(size_t i) const {
   const auto& d = cfg.distance.at(i);
   const Vec2 o = sensorPosition(d.x, d.y);
-  const double r = world.raycast(o, pose.yaw + d.yaw, d.maxRange);
+  double r = world.raycast(o, pose.yaw + d.yaw, d.maxRange);
+  if (d.halfFov > 0)  // beam edges as well as the axis
+    for (double a : {-d.halfFov, d.halfFov}) r = std::min(r, world.raycast(o, pose.yaw + d.yaw + a, d.maxRange));
   return r < d.minRange ? d.minRange : r;
 }
 
@@ -536,11 +547,17 @@ double Vehicle::lineOffset() const {
   return world.lineCentreDistance(sensorPosition(x / n, y / n));
 }
 
-bool Vehicle::analogInput(Board&, int pin, double& volts) {
+bool Vehicle::analogInput(Board& b, int pin, double& volts) {
   std::uniform_real_distribution<double> noise(-0.02, 0.02);
   for (size_t i = 0; i < cfg.lineSensors.size(); ++i) {
     const auto& s = cfg.lineSensors[i];
-    if (s.pin != pin || !s.analog) continue;
+    if (s.pin != pin) continue;
+    if (!s.analog) {  // comparator output read on an analog pin: 0 V or 3.3 V
+      int level = 0;
+      digitalInput(b, pin, level);
+      volts = level ? 3.3 : 0.0;
+      return true;
+    }
     volts = s.offVolts + (s.onVolts - s.offVolts) * lineSensorCoverage(i) + noise(rng);
     return true;
   }
@@ -566,6 +583,14 @@ bool Vehicle::digitalInput(Board&, int pin, int& level) {
     if (s.pin != pin || s.analog) continue;
     const bool on = lineSensorCoverage(i) > 0.5;
     level = on ? s.onLevel : 1 - s.onLevel;
+    return true;
+  }
+  for (size_t i = 0; i < cfg.distance.size(); ++i) {
+    const auto& d = cfg.distance[i];
+    if (d.kind != DistanceConfig::IRProximity || d.pin != pin) continue;
+    const double r = distanceReading(i);
+    const bool on = std::isfinite(r) && r + d.noise * gauss(rng) <= d.maxRange;
+    level = on ? d.onLevel : 1 - d.onLevel;
     return true;
   }
   return false;
