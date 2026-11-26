@@ -1,0 +1,13 @@
+RevD / hand-solder edition. KiCad 10.0.8.
+Verified against the saved RevC design.
+71 footprints. All schematic pin/net assignments (228 pins) identical to RevC.
+All PCB footprints retain pad numbers, net names, values, and original default population.
+14 fitted kit resistors/links and 4 optional kit resistor sites, 36 plated component drills at 0.8 mm, 10.16 mm pitch.
+17 fitted surface-mount parts, all on top. All 53 other footprints retain pad coordinates and footprint assignment.
+Board centre (100, 100) mm, outline diameter 100 mm. All four original 3.2 mm mounting holes and module/header pad coordinates verified.
+J1, J3/J4, J5/J6, J7, J9/J10, J15/J16 and Nano pin numbering and nets match RevC.
+Four motor outputs and VSW retain 0.8 mm trace widths; REG5V retains 0.6/0.8 mm and VIN 0.45 mm.
+DRC includes schematic parity. See native reports for rule coverage.
+Gerber job, nine artwork layers, archive CRC and every Excellon drill verified against PCB coordinates, diameter and plating: 209 PTH including vias, 4 NPTH.
+Rev D update: TP5 (SLEEP), TP6 (FAULT) and TP8 (GND) moved out from under the #3297 carrier to (131.0,107.4), (137.3,113.4) and (131.0,104.6); the FAULT stub and its via were removed. R8 changed to 330R.
+Kit fit, clearance under soldered leads, power and firmware behavior require first-article measurements.
