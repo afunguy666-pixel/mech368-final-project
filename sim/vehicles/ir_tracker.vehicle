@@ -28,11 +28,11 @@ line_sensor r_in  pin=A1 x=0.07575 y=-0.010 on=2.9 off=0.5 spot=0.004
 line_sensor l_in  pin=A2 x=0.07575 y=0.010  on=2.9 off=0.5 spot=0.004
 line_sensor l_out pin=A3 x=0.07575 y=0.030  on=2.9 off=0.5 spot=0.004
 # CAD lens origins are projected onto the floor. The emitters sit at 28.25 mm, receivers at 21.75 mm.
-# Shoulder to front opening: |y| increases from 19.262 to 20.494 mm. Left is +10 deg, right -10 deg.
+# The shoulder and front opening share y = +/-20 mm. Both optical axes face straight ahead.
 # Range and field of view below are optical model inputs.
 # LM393 open-collector outputs with 3.3 V pull-ups read LOW within range.
-ir_proximity front_left  pin=D12 x=0.07825 y=0.020  yaw_deg=10  range=0.08 fov_deg=20 on_level=0
-ir_proximity front_right pin=D11 x=0.07825 y=-0.020 yaw_deg=-10 range=0.08 fov_deg=20 on_level=0
+ir_proximity front_left  pin=D12 x=0.07825 y=0.020  yaw_deg=0 range=0.08 fov_deg=20 on_level=0
+ir_proximity front_right pin=D11 x=0.07825 y=-0.020 yaw_deg=0 range=0.08 fov_deg=20 on_level=0
 battery pin=A7 divider=3.0 volts=7.2 drain_per_min=0
 gyro bias=0.3 noise=0.05
 temperature tau=2.0 noise=0.05 offset=0

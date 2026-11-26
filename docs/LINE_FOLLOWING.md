@@ -41,12 +41,12 @@ The measurements come from the default configuration of `Car/寻线小车装配�
 | Line probe mounting height | The nominal low point of each lens sits 5.0 mm above the floor and projects 0.5 mm below the clamp. |
 | Four line spots | The simulator samples directly below each pair's midpoint, 75.75 mm ahead of the axle at y = −30, −10, +10 and +30 mm (A0 to A3). |
 | Obstacle sensing | The nominal LTE-4206 / LTR-4206 lens tips sit 78.25 mm ahead of the axle at y = ±20.00 mm. On each side the emitter is 28.25 mm above the floor and the receiver is 21.75 mm above it. |
-| Obstacle bore axes | Left (D12) +10.00°, right (D11) −10.00°, giving a 20.00° included angle. All four axes have 0.00° pitch relative to the level chassis. |
+| Obstacle bore axes | Both pairs point straight ahead at 0.00° yaw and pitch relative to the chassis. The left (D12) and right (D11) axes are 40.00 mm apart. |
 | Collision check | 150 mm diameter circle centred 15.25 mm ahead of the axle. The projected CAD parts span a circle of about 149.6 mm diameter around that centre. |
 
 Each emitter and receiver enters its stepped bore from above. The flange seats against the shoulder between the 3.45 mm guide and 4.50 mm counterbore. The fore–aft axes tilt inward 21.8° each and meet at the floor. They are 4.0 mm apart at 5.0 mm height and 4.4 mm apart at the clamp underside. Use a 5 mm gauge under the lenses before securing them. [Clamp and pair mounting dimensions](ir-pair-mount.png)
 
-Moving 6.985 mm forward from the seating shoulder to the shroud opening increases each bore’s distance from the centreline from 19.262 mm to 20.494 mm. The simulator casts from the nominal lens tips with an assumed 80 mm range and 20° full field of view. The replay’s **CAD underside** panel overlays the four line spots and both forward sensor axes. [Obstacle mount angles](obstacle-mount-yaw.png) · [Side elevation and ground contacts](cad-ground-contact.png)
+The centre of each shroud opening is 7.05 mm ahead of its seating shoulder. Both centres are 20.00 mm from the vehicle centreline. The simulator casts from the nominal lens tips with an assumed 80 mm range and 20° full field of view. The replay’s **CAD underside** panel overlays the four line spots and both forward sensor axes. [Obstacle mount angles](obstacle-mount-yaw.png) · [Side elevation and ground contacts](cad-ground-contact.png)
 
 ## Sensor hardware
 
@@ -77,8 +77,8 @@ machine). An array whose outer sensors sit more than one tape width (plus the
 sensor spot) from the opposite inner sensor would not need it, for example
 +-15/+-45 mm. That is wider than the CAD frame allows.
 
-**Obstacle pair:** two LTE/LTR pairs on the front frame at +-20 mm, toed out
-10 degrees, through an LM393 with the threshold set for 6-8 cm on a cone
+**Obstacle pair:** two forward-facing LTE/LTR pairs at ±20 mm on the front frame. Set the LM393
+threshold for a detection distance of 6–8 cm on a cone
 (handout Figure 5). Output LOW = object (`OBSTACLE_ACTIVE`). Keep the range
 short: at the end of the track the border wall must not trigger a detour.
 
@@ -171,15 +171,15 @@ bash scripts/run-fw-sim.sh track_cones            # standalone example
 bash scripts/run-fw-sim.sh --seeds 10 track_serpentine track_cones track_cones_lm393 track_cones_on_line
 ```
 
-The cone scenarios also check the obstacle inputs in isolation. A 1 mm diameter target placed 60 mm from either lens at 10° or 20° outboard pulls only its corresponding pin (D12 or D11) low. At 10° inboard both pins stay high. The paired cases also monitor D8 during E-stop and heartbeat loss.
+The cone scenarios also check the obstacle inputs in isolation. A 1 mm diameter target placed 60 mm from either lens on its centre ray or at either 10° edge pulls its corresponding pin low. At 20° in either direction both inputs stay high. The paired cases also monitor D8 during E-stop and heartbeat loss.
 
 | Scenario | Seed 368 | Seeds 1–10 |
 | --- | --- | --- |
-| `robot_track_cones` | Paired demo firmware stopped at 48.03 s, 3 detours, zero contacts, 4.3 mm peak offset while following | 10/10 |
+| `robot_track_cones` | Paired demo firmware stopped at 49.68 s, 3 detours, zero contacts, 4.2 mm peak offset while following | 10/10 |
 | `track_serpentine` | Stopped at 33.31 s, 6 corners, 3.0 mm peak offset while following | 10/10 |
-| `track_cones` | Stopped at 46.06 s, 3 detours, zero contacts | 10/10 |
-| `track_cones_lm393` | Stopped at 47.76 s, 3 detours, zero contacts, 12.0 mm peak offset while following | 10/10 |
-| `track_cones_on_line` | Stopped at 47.47 s, 3 detours, one retry on the other side, zero contacts | 10/10 |
+| `track_cones` | Stopped at 47.69 s, 3 detours, zero contacts | 10/10 |
+| `track_cones_lm393` | Stopped at 49.35 s, 3 detours, zero contacts, 11.5 mm peak offset while following | 10/10 |
+| `track_cones_on_line` | Stopped at 47.54 s, 3 detours, one retry on the other side, zero contacts | 10/10 |
 | `track_gesture_stop` | Stopped on the local DOWN gesture | 10/10 |
 
 Earlier stress runs with the previous geometry used wheel mismatch, extra gyro bias, slower motors, blurrier spots and shifted cones. The current checks assume a level floor, rigid wheels and a fixed optical response. Ambient IR, changing floor reflectance, tyre slip and actual mounted sensor height require bench measurements.

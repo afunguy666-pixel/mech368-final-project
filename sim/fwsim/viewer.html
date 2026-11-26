@@ -185,7 +185,7 @@ if (V.plan) {
   }
   $('cadYaw').textContent = axes.map(a => {
     const deg = a.yaw * 180 / Math.PI;
-    return a.name + ' ' + (deg < 0 ? '−' : '+') + Number(Math.abs(deg).toFixed(2)) + '°';
+    return a.name + ' ' + (deg < 0 ? '−' : deg > 0 ? '+' : '') + Number(Math.abs(deg).toFixed(2)) + '°';
   }).join(' · ');
   const pitch = V.noseDown * 180 / Math.PI;
   $('cadPitch').textContent = pitch === 0 ? 'Chassis pitch 0° (level)' :

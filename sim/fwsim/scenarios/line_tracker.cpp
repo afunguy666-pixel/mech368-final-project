@@ -79,18 +79,19 @@ void checkObstacleMount(Simulation& sim) {
   Vehicle car(sim.vehicleConfig(), bench);
   for (auto& sensor : car.cfg.distance) sensor.noise = 0;
   for (int side : {1, -1}) {
-    for (int bearing : {10, 20, -10}) {
-      // 1 mm diameter target, 60 mm from the CAD lens position. Test the
-      // centre ray, the outer edge, and the mirror of the centre ray inboard.
+    for (int bearing : {-20, -10, 0, 10, 20}) {
+      // Probe the centre ray, both edges of the 20-degree field, and beyond each edge.
       const double forward = 0.07825 + 0.060 * std::cos(bearing * rad);
       const double lateral = side * (0.020 + 0.060 * std::sin(bearing * rad));
       bench.circles = {{{bench.start.x - lateral, bench.start.y + forward}, 0.0005, "target"}};
       int left = -1, right = -1;
       const bool pins = car.digitalInput(sim.board(Robot), D12, left) &&
                         car.digitalInput(sim.board(Robot), D11, right);
-      const bool leftHit = side > 0 && bearing > 0, rightHit = side < 0 && bearing > 0;
+      const bool inBeam = std::abs(bearing) <= 10;
+      const bool leftHit = side > 0 && inBeam, rightHit = side < 0 && inBeam;
       const std::string label = std::string(side > 0 ? "Left" : "Right") + " mount, " +
-          std::to_string(std::abs(bearing)) + (bearing > 0 ? " deg outboard" : " deg inboard");
+          (bearing == 0 ? "straight ahead" :
+           std::to_string(std::abs(bearing)) + (bearing > 0 ? " deg outboard" : " deg inboard"));
       FWSIM_CHECK(sim, pins && left == (leftHit ? LOW : HIGH) && right == (rightHit ? LOW : HIGH), label);
     }
   }
