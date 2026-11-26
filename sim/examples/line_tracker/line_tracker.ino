@@ -14,8 +14,9 @@
 //     voltages (analog, best) or LM393 outputs (digital) - the same code
 //     reads both, the calibration sweep finds each sensor's range.
 //   - Obstacle IR pairs through an LM393 at the front corners: D12 (left),
-//     A6 (right), output LOW when an object is within range.
-//   - SN754410: EN pins take PWM, 1A/2A set the direction.
+//     D11 (right), output LOW when an object is within range.
+//   - DRV8833 (IN/IN): AIN1/AIN2 = D4/D5 (left), BIN1/BIN2 = D6/D7 (right),
+//     nSLEEP = D8 (LOW = outputs off), nFAULT -> A6 (open drain, pulled up).
 //   - Encoders on D2/D3 (left) and D9/D10 (right), channel A on interrupts.
 //   - All sensor outputs must be pulled up to 3.3 V, never to 5 V.
 //
@@ -32,10 +33,12 @@
 using namespace mech368::line;
 
 // ---------------------------------------------------------------- wiring ---
-const int LEFT_EN = D5, LEFT_IN1 = D4, LEFT_IN2 = D7;
-const int RIGHT_EN = D6, RIGHT_IN1 = D8, RIGHT_IN2 = D11;
+const int LEFT_IN1 = D4, LEFT_IN2 = D5;     // DRV8833 AIN1, AIN2
+const int RIGHT_IN1 = D6, RIGHT_IN2 = D7;   // DRV8833 BIN1, BIN2
+const int DRIVER_SLEEP = D8;                // DRV8833 nSLEEP: HIGH = enabled
+const int DRIVER_FAULT = A6;                // DRV8833 nFAULT: LOW = over-current/over-temperature
 const int LEFT_ENC_A = D2, LEFT_ENC_B = D3, RIGHT_ENC_A = D9, RIGHT_ENC_B = D10;
-const int OBSTACLE_LEFT = D12, OBSTACLE_RIGHT = A6;
+const int OBSTACLE_LEFT = D12, OBSTACLE_RIGHT = D11;
 const int OBSTACLE_ACTIVE = LOW;  // LM393 output level with an object in range
 
 const int LINE_COUNT = 4;
@@ -72,6 +75,7 @@ unsigned long lastGyroUs = 0;
 long lastLeftTick = 0, lastRightTick = 0, lastLeftSpeed = 0, lastRightSpeed = 0;
 float targetLeft = 0, targetRight = 0, speedLeft = 0, speedRight = 0;  // m/s
 uint32_t lastTransitions = 0;
+bool faultReported = false;
 unsigned long lastTick = 0, lastSpeedLoop = 0, lastReport = 0;
 LineReading reading;
 
@@ -81,18 +85,23 @@ bool motionPermitted() { return true; }
 
 float metresPerCount() { return TWO_PI * WHEEL_RADIUS / COUNTS_PER_REV; }
 
-void drive(int en, int in1, int in2, float duty) {
+// DRV8833 in slow decay (drive/brake): forward = IN1 high, PWM on IN2 with
+// the inverted duty; reverse = the mirror image; zero = both high = brake.
+// Slow decay gives speed roughly proportional to duty, which helps at the
+// low speeds of corners and detours. Both pins always use analogWrite (255 =
+// high, 0 = low) so a pin is never switched between PWM and digitalWrite.
+void drive(int in1, int in2, float duty) {
   duty = constrain(duty, -1.0f, 1.0f);
-  digitalWrite(in1, duty > 0 ? HIGH : LOW);
-  digitalWrite(in2, duty < 0 ? HIGH : LOW);
-  analogWrite(en, static_cast<int>(fabsf(duty) * 255.0f + 0.5f));
+  const int off = static_cast<int>((1.0f - fabsf(duty)) * 255.0f + 0.5f);
+  analogWrite(in1, duty >= 0 ? 255 : off);
+  analogWrite(in2, duty >= 0 ? off : 255);
 }
 void stopMotors() {
   targetLeft = targetRight = 0;
   leftPI.reset();
   rightPI.reset();
-  drive(LEFT_EN, LEFT_IN1, LEFT_IN2, 0);
-  drive(RIGHT_EN, RIGHT_IN1, RIGHT_IN2, 0);
+  drive(LEFT_IN1, LEFT_IN2, 0);  // brake
+  drive(RIGHT_IN1, RIGHT_IN2, 0);
 }
 
 void readLineRaw(uint16_t* raw) {
@@ -168,8 +177,11 @@ Twist calibrationStep(const uint16_t* raw) {
 
 void setup() {
   Serial.begin(115200);
-  for (int pin : {LEFT_EN, LEFT_IN1, LEFT_IN2, RIGHT_EN, RIGHT_IN1, RIGHT_IN2}) pinMode(pin, OUTPUT);
+  pinMode(DRIVER_SLEEP, OUTPUT);
+  digitalWrite(DRIVER_SLEEP, LOW);  // driver off until something is allowed to move
+  for (int pin : {LEFT_IN1, LEFT_IN2, RIGHT_IN1, RIGHT_IN2}) pinMode(pin, OUTPUT);
   stopMotors();
+  pinMode(DRIVER_FAULT, INPUT_PULLUP);
   for (int pin : {LEFT_ENC_A, LEFT_ENC_B, RIGHT_ENC_A, RIGHT_ENC_B, OBSTACLE_LEFT, OBSTACLE_RIGHT})
     pinMode(pin, INPUT);
   pinMode(LEDR, OUTPUT);
@@ -271,7 +283,14 @@ void loop() {
         Serial.println(" detours");
       }
     }
-    if (!motionPermitted() || (mode != CALIBRATING && mode != RUNNING)) cmd = Twist();
+    const bool moving = motionPermitted() && (mode == CALIBRATING || mode == RUNNING);
+    if (!moving) cmd = Twist();
+    // Second, independent stop: nSLEEP puts the DRV8833 outputs in high impedance.
+    digitalWrite(DRIVER_SLEEP, moving ? HIGH : LOW);
+    if (moving && digitalRead(DRIVER_FAULT) == LOW && !faultReported) {
+      faultReported = true;
+      Serial.println("DRV8833 FAULT: over-current or over-temperature (stalled motor?)");
+    }
     const WheelSpeeds w = toWheels(limitTwist(cmd, TRACK, MAX_WHEEL_SPEED), TRACK);
     targetLeft = w.left;
     targetRight = w.right;
@@ -293,8 +312,8 @@ void loop() {
     if (targetLeft == 0 && targetRight == 0) {
       stopMotors();
     } else {
-      drive(LEFT_EN, LEFT_IN1, LEFT_IN2, leftPI.update(targetLeft, speedLeft, dt));
-      drive(RIGHT_EN, RIGHT_IN1, RIGHT_IN2, rightPI.update(targetRight, speedRight, dt));
+      drive(LEFT_IN1, LEFT_IN2, leftPI.update(targetLeft, speedLeft, dt));
+      drive(RIGHT_IN1, RIGHT_IN2, rightPI.update(targetRight, speedRight, dt));
     }
   }
 

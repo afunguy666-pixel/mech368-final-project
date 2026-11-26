@@ -306,6 +306,7 @@ VehicleConfig VehicleConfig::load(const std::string& path) {
       } else {
         st.fail("unknown motor driver '" + driver + "' (pwm_dir, in_in, en_in_in)");
       }
+      m.sleep = st.pin("sleep", false);
       m.invert = st.flag("invert");
     } else if (cmd == "encoder") {
       EncoderConfig& e = side(st) == 0 ? v.encLeft : v.encRight;
@@ -431,6 +432,9 @@ double Vehicle::motorCommand(const MotorConfig& m) const {
   const Board& b = *board;
   auto level = [&](int pin) { return b.outputFraction(pin) > 0.5 ? 1.0 : 0.0; };
   double u = 0.0;
+  // A driver with a sleep pin is off until the sketch drives that pin HIGH
+  // (the DRV8833 pulls nSLEEP low internally).
+  if (m.sleep >= 0 && level(m.sleep) < 1.0) return 0.0;
   switch (m.driver) {
     case Driver::None: return 0.0;
     case Driver::PwmDir: u = b.outputFraction(m.pwm) * (level(m.dir) > 0 ? 1.0 : -1.0); break;

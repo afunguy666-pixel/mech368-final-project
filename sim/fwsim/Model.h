@@ -54,6 +54,7 @@ enum class Driver { None, PwmDir, InIn, EnInIn };
 struct MotorConfig {
   Driver driver = Driver::None;
   int pwm = -1, dir = -1, in1 = -1, in2 = -1, en = -1;
+  int sleep = -1;  // optional driver enable (e.g. DRV8833 nSLEEP): outputs off while LOW
   bool invert = false;
 };
 struct EncoderConfig { int a = -1, b = -1; double ppr = 0; bool invert = false; };

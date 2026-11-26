@@ -12,7 +12,7 @@
 | `libraries/Mech368Line/src/LineNavigator.h` | PD 巡线控制器和赛道状态机（弯道、丢线、终点、绕障） |
 | `libraries/Mech368Line/src/DriveMath.h` | 速度指令与轮速换算（讲义式 4、6）、里程计、轮速 PI、陀螺仪零偏、横滚/俯仰角 |
 | `tests/line_nav_test.cpp` | 主机测试（由 `scripts/test-host.sh` 运行） |
-| `sim/examples/line_tracker/line_tracker.ino` | 示例程序：传感器、编码器、陀螺仪、SN754410 输出、标定扫描 |
+| `sim/examples/line_tracker/line_tracker.ino` | 示例程序：传感器、编码器、陀螺仪、DRV8833 输出（慢衰减、nSLEEP、nFAULT）、标定扫描 |
 | `sim/vehicles/ir_tracker.vehicle`、`ir_tracker_lm393.vehicle` | 仿真机器人：模拟量接法 / LM393 接法的巡线传感器 |
 | `sim/fwsim/scenarios/line_tracker.cpp` | 赛道仿真场景（见"仿真结果"） |
 
@@ -86,7 +86,7 @@ bash scripts/run-fw-sim.sh --seeds 10 track_serpentine track_cones track_cones_l
 | `track_serpentine` | 无锥桶，模拟量阵列 | 31.7 s 到终点，6 个弯，巡线时最大偏差 7 mm | 10/10 |
 | `track_cones` | 讲义锥桶位置，模拟量阵列 | 43.2 s 到终点，绕障 3 次，0 碰撞 | 10/10 |
 | `track_cones_lm393` | 讲义锥桶位置，LM393 阵列 | 43.5 s 到终点，绕障 3 次，0 碰撞 | 10/10 |
-| `track_cones_on_line` | 锥桶放在胶带中线上 | 44.8 s 到终点，绕障 3 次（其中一次换另一侧重试），0 碰撞 | 10/10 |
+| `track_cones_on_line` | 锥桶放在胶带中线上 | 44.7 s 到终点，绕障 3 次（其中一次换另一侧重试），0 碰撞 | 10/10 |
 | `track_gesture_stop` | 中途做 DOWN 手势 | 停车 | 10/10 |
 
 另外做过一次没有提交的压力测试：左右轮尺寸差 4%、陀螺仪零偏 1.5°/s、电机更弱且死区更大、传感器更模糊、锥桶挪动 4–5 cm，都能跑完全程。

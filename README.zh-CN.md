@@ -92,7 +92,7 @@ bash scripts/run-fw-sim.sh --seeds 20 link_stability   # 用 20 个随机种子�
 | `sim/fwsim/hostduino/` | 在电脑上替代 Arduino 核心库、ArduinoBLE、BMI270/BMM150 IMU、APDS-9960、HS300x 的模拟库 |
 | `sim/fwsim/` | 虚拟开发板、无线链路、小车/场地模型、回放查看器、测试场景 |
 | `sim/examples/line_follower/` | 驱动虚拟小车的示例程序（不是课程固件） |
-| `sim/examples/line_tracker/` | `Mech368Line` 的示例程序，使用套件里的红外对管、SN754410 和编码器（尚未经过安全闸门） |
+| `sim/examples/line_tracker/` | `Mech368Line` 的示例程序，使用套件里的红外对管、DRV8833 和编码器（尚未经过安全闸门） |
 
 ## 软件在环（SIL）模拟器
 

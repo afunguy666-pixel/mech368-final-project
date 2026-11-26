@@ -98,7 +98,7 @@ and the current findings on the Phase 1 link timing.
 | `sim/fwsim/hostduino/` | Host stand-ins for Arduino core, ArduinoBLE, BMI270/BMM150 IMU, APDS-9960, HS300x |
 | `sim/fwsim/` | Virtual boards, radio, vehicle/world models, replay viewer, scenarios |
 | `sim/examples/line_follower/` | Demo sketch (not course firmware) driving the virtual vehicle |
-| `sim/examples/line_tracker/` | Example sketch for `Mech368Line` with the kit's IR pairs, SN754410 and encoders (not yet behind the safety gate) |
+| `sim/examples/line_tracker/` | Example sketch for `Mech368Line` with the kit's IR pairs, a DRV8833 and encoders (not yet behind the safety gate) |
 
 ## Software-in-the-loop (SIL) simulator
 

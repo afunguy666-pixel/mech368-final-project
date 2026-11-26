@@ -1,5 +1,5 @@
 # Virtual robot for sim/examples/line_tracker, built from the course parts:
-# SN754410 H-bridge, 6 V 100:1 micro metal gearmotors with encoders,
+# DRV8833 driver, 6 V 100:1 micro metal gearmotors with encoders,
 # LTE-4206 / LTR-4206 IR pairs (line array read as analog voltages; obstacle
 # pair through an LM393 comparator). Every pin and number is a PLACEHOLDER:
 # replace them with your wiring and bench measurements.
@@ -11,9 +11,9 @@ motor_max_speed 30        # wheel rad/s at full duty (~290 rpm loaded, assumed)
 motor_time_constant 0.08
 motor_deadband 0.08
 nominal_voltage 7.2
-# SN754410: EN (PWM) plus two direction inputs per motor.
-motor left  en_in_in en=D5 in1=D4 in2=D7
-motor right en_in_in en=D6 in1=D8 in2=D11
+# DRV8833 (IN/IN, PWM on the inputs), shared nSLEEP on D8.
+motor left  in_in in1=D4 in2=D5 sleep=D8
+motor right in_in in1=D6 in2=D7 sleep=D8
 # Magnetic encoder: 12 counts/rev of the motor shaft on both edges of both
 # channels = 3 pulses on channel A per motor revolution, x100 gearbox.
 encoder left  a=D2 b=D3 ppr=300
@@ -30,7 +30,7 @@ line_sensor l_out pin=A3 x=0.06 y=0.045  on=2.9 off=0.5 spot=0.004
 # LM393 (open collector, pull-up to 3.3 V): output LOW when an object is
 # within range.
 ir_proximity front_left  pin=D12 x=0.065 y=0.03  yaw_deg=10  range=0.08 fov_deg=20 on_level=0
-ir_proximity front_right pin=A6  x=0.065 y=-0.03 yaw_deg=-10 range=0.08 fov_deg=20 on_level=0
+ir_proximity front_right pin=D11 x=0.065 y=-0.03 yaw_deg=-10 range=0.08 fov_deg=20 on_level=0
 battery pin=A7 divider=3.0 volts=7.2 drain_per_min=0
 gyro bias=0.3 noise=0.05
 temperature tau=2.0 noise=0.05 offset=0

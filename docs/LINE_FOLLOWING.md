@@ -13,7 +13,7 @@ wires it to the robot and the firmware simulator checks it on the field map.
 | `libraries/Mech368Line/src/LineNavigator.h` | PD line follower and the track state machine (corners, lost line, end, detour) |
 | `libraries/Mech368Line/src/DriveMath.h` | Twist/wheel kinematics (handout eq. 4, 6), odometry, wheel speed PI, gyro bias, roll/pitch |
 | `tests/line_nav_test.cpp` | Host tests (run by `scripts/test-host.sh`) |
-| `sim/examples/line_tracker/line_tracker.ino` | Example sketch: sensors, encoders, gyro, SN754410 outputs, calibration sweep |
+| `sim/examples/line_tracker/line_tracker.ino` | Example sketch: sensors, encoders, gyro, DRV8833 outputs (slow decay, nSLEEP, nFAULT), calibration sweep |
 | `sim/vehicles/ir_tracker.vehicle`, `ir_tracker_lm393.vehicle` | Simulated robot with analog / LM393 line sensors |
 | `sim/fwsim/scenarios/line_tracker.cpp` | Course scenarios (see Results) |
 
@@ -150,7 +150,7 @@ bash scripts/run-fw-sim.sh --seeds 10 track_serpentine track_cones track_cones_l
 | `track_serpentine` | No cones, analog array | End at 31.7 s, 6 corners, max 7 mm offset while following | 10/10 |
 | `track_cones` | Handout cones, analog | End at 43.2 s, 3 detours, 0 collisions | 10/10 |
 | `track_cones_lm393` | Handout cones, LM393 array | End at 43.5 s, 3 detours, 0 collisions | 10/10 |
-| `track_cones_on_line` | Cones on the tape centre | End at 44.8 s, 3 detours (one retried on the other side), 0 collisions | 10/10 |
+| `track_cones_on_line` | Cones on the tape centre | End at 44.7 s, 3 detours (one retried on the other side), 0 collisions | 10/10 |
 | `track_gesture_stop` | DOWN gesture mid-run | Stops | 10/10 |
 
 A one-off stress check (not committed) also completed the course with a 4 %

@@ -114,6 +114,9 @@ FWSIM_SCENARIO(track_gesture_stop, "Line tracker: DOWN gesture stops the robot m
   FWSIM_CHECK(sim, speedAt(sim, 4200) > 0.1, "robot was following the line before the gesture");
   FWSIM_CHECK(sim, speedAt(sim, 9500) < 0.01, "robot stopped after the DOWN gesture");
   FWSIM_CHECK(sim, sim.serialContains(Robot, "gesture DOWN: stopping"), "sketch logged the stop");
+  FWSIM_CHECK(sim, sim.levelAt(Robot, D8, 900) == LOW, "DRV8833 nSLEEP low before the start gesture");
+  FWSIM_CHECK(sim, sim.levelAt(Robot, D8, 5000) == HIGH, "DRV8833 nSLEEP high while driving");
+  FWSIM_CHECK(sim, sim.levelAt(Robot, D8, 9500) == LOW, "DRV8833 nSLEEP low again after the stop");
 }
 
 FWSIM_SCENARIO(track_cones_on_line, "Line tracker: cones centred on the tape (handout Figure 5), detour side by sensor") {
