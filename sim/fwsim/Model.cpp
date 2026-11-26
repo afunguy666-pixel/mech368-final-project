@@ -278,6 +278,7 @@ VehicleConfig VehicleConfig::load(const std::string& path) {
     if (cmd == "track_width") v.trackWidth = st.num(1);
     else if (cmd == "wheel_radius") v.wheelRadius = st.num(1);
     else if (cmd == "body_radius") v.bodyRadius = st.num(1);
+    else if (cmd == "body_offset") v.bodyOffset = st.num(1);
     else if (cmd == "motor_max_speed") v.maxWheelSpeed = st.num(1);
     else if (cmd == "motor_time_constant") v.timeConstant = st.num(1);
     else if (cmd == "motor_deadband") v.deadband = st.num(1);
@@ -492,7 +493,8 @@ void Vehicle::step() {
   next.y += ds * sinc * std::sin(pose.yaw + half);
   next.yaw += dyaw;
   std::string what;
-  const bool hit = world.collides(Vec2{next.x, next.y}, cfg.bodyRadius, &what);
+  const Vec2 centre{next.x + cfg.bodyOffset * std::cos(next.yaw), next.y + cfg.bodyOffset * std::sin(next.yaw)};
+  const bool hit = world.collides(centre, cfg.bodyRadius, &what);
   const double previousSpeed = speed;
   if (hit) {
     // Body blocked: wheels slip, chassis keeps its position but may rotate.

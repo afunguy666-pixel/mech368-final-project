@@ -199,6 +199,48 @@ void testCornerNeedsMinPivot() {
   assert(wrapAngle(s.in.heading) >= s.nav.cfg.minPivot - 1e-3f);
 }
 
+// Narrow array: wide black that is only an offset must not start a corner.
+void testCornerConfirmByLoss() {
+  const float y[4] = {-0.030f, -0.010f, 0.010f, 0.030f};
+  Script s;
+  s.arr.configure(4, y);
+  s.nav.cfg.confirmCornerByLoss = true;
+  s.nav.cfg.cornerAdvanceAfterLoss = 0.053f;
+  s.line(false, true, true, false);
+  s.nav.start(s.in);
+  for (int i = 0; i < 100; ++i) s.step();
+  // Robot 8 mm off centre: three sensors black, one outer. Line continues.
+  s.line(true, true, true, false);
+  assert(s.runUntil(NavState::CornerCheck, 5) >= 0);
+  assert(s.runUntil(NavState::Follow, 400) >= 0);  // drove 7 cm, line never ended
+  assert(s.nav.corners() == 0);
+  s.line(false, true, true, false);                // PD re-centred
+  for (int i = 0; i < 200; ++i) s.step();          // re-arm
+  // A cone during the corner check still starts a detour.
+  s.line(true, true, true, false);
+  assert(s.runUntil(NavState::CornerCheck, 5) >= 0);
+  s.in.obstacleLeft = true;
+  assert(s.runUntil(NavState::AvoidBrake, 5) >= 0);
+  s.in.obstacleLeft = false;
+  s.nav.stop();
+  s.line(false, true, true, false);
+  s.nav.start(s.in);
+  for (int i = 0; i < 100; ++i) s.step();
+  // Real corner: wide, then the line ends under the bar.
+  s.line(true, true, true, false);
+  assert(s.runUntil(NavState::CornerCheck, 5) >= 0);
+  for (int i = 0; i < 20; ++i) s.step();
+  s.line(false, false, false, false);
+  assert(s.runUntil(NavState::CornerAdvance, 5) >= 0);
+  const float from = s.in.distance;
+  assert(s.runUntil(NavState::CornerPivot, 400) >= 0);
+  assert(near(s.in.distance - from, 0.053f, 0.003f));
+  while (wrapAngle(-s.in.heading) < degToRad(80)) s.step();
+  s.line(false, true, true, false);
+  assert(s.runUntil(NavState::Settle, 5) >= 0);
+  assert(s.nav.corners() == 1);
+}
+
 void testLostAndEnd() {
   // Lost to the left -> search left, then find it.
   Script s;
@@ -293,6 +335,7 @@ int main() {
   testOdometry();
   testCorner();
   testCornerNeedsMinPivot();
+  testCornerConfirmByLoss();
   testLostAndEnd();
   testDetour();
   std::puts("line_nav_test: all assertions passed");

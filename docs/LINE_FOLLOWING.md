@@ -24,13 +24,37 @@ MotionSafety gate: before it drives the real robot, merge it into
 `firmware/robot` so every motor command passes the single safety-gated
 output and the E-stop stops the navigator (`motionPermitted()` marks the spot).
 
+## Robot geometry (team CAD, 2026-11-26)
+
+The simulated robot follows the team's SolidWorks assembly. The STEP file
+itself is not in the repository.
+
+| Item | Value |
+| --- | --- |
+| Wheels | 65 mm diameter, centres +-46 mm (track 92 mm), at the rear |
+| Ball caster | front, under the sensor frame |
+| Footprint | fits the 150 mm handout cylinder centred 15.25 mm ahead of the axle (CAD envelope 148 mm) |
+| Sensor line | on the front frame, 2 mm behind its front edge = 78.25 mm ahead of the axle |
+| Line sensors | y = -30, -10, +10, +30 mm (A0 = -30, rightmost) |
+| Obstacle sensors | y = +-20 mm, toed out 10 deg |
+
+Two things in the CAD need attention before building:
+
+- **Sensor height.** The chassis plate is about 35-39 mm above the floor (wheel
+  bottom at z = -39 mm). Reflective IR line sensors need 3-8 mm, so the line
+  sensors must hang below the frame on a bracket. Obstacle sensors at plate
+  height are fine.
+- **Caster height.** The ball caster's lowest point is 2.5 mm above the wheels'
+  contact plane, so the robot tilts forward about 2.9 deg until the ball
+  touches. That lowers the front by about 4 mm. Shim the caster or include
+  the tilt when setting the sensor height.
+
 ## Sensor hardware
 
 Kit parts: LTE-4206 (IR emitter), LTR-4206 (IR phototransistor), LM393 (dual
 comparator).
 
-**Line array (recommended): 4 sensors, 3 cm apart, 6 cm ahead of the axle,
-read as analog voltages.** Phototransistor emitter to GND, collector to an
+**Line array: 4 sensors read as analog voltages.** Phototransistor emitter to GND, collector to an
 analog pin with a pull-up resistor to **3.3 V** (start with 10-47 kOhm and
 adjust for a large floor/tape difference). Black tape reflects less IR, so the
 transistor conducts less and the pin reads **high** (`BLACK_IS_HIGH = true`).
@@ -40,18 +64,21 @@ steering smooth.
 **LM393 alternative:** comparator output (open collector, pull-up to **3.3 V**)
 into the same pins. The code reads it with `analogRead()` as 0 or full
 scale, and the calibration sweep handles it automatically. Position is then
-quantised to 0, +-1.5, +-3, +-4.5 cm, which still works (see Results) but
-steers less smoothly. Set each threshold with the sensor over the tape edge.
+quantised to 0, +-1, +-2, +-3 cm, which still works (see Results) but
+steers less smoothly and raises more false corner alarms. Set each threshold with the sensor over the tape edge.
 
 **Never pull any signal up to 5 V.** The Nano 33 BLE pins are 3.3 V only. The
 IR LEDs can run from 5 V through their own resistors (about 20 mA each).
 
-Why this layout: with 3 cm spacing on 5 cm tape, a centred line covers the
-two inner sensors and never the outer ones. One outer sensor turning black
-while the inner ones are black means the black area is wider than the tape:
-a corner. The 9 cm bar fits inside the 15 cm robot.
+A centred 5 cm tape covers the two inner sensors (+-10 mm) and leaves the
+outer ones (+-30 mm) white, but only by 5 mm. Three sensors including one
+outer go black both at a corner and when the robot is just 5-15 mm off
+centre. The sketch therefore sets `confirmCornerByLoss` (see the state
+machine). An array whose outer sensors sit more than one tape width (plus the
+sensor spot) from the opposite inner sensor would not need it, for example
++-15/+-45 mm. That is wider than the CAD frame allows.
 
-**Obstacle pair:** two LTE/LTR pairs at the front corners, toed out about
+**Obstacle pair:** two LTE/LTR pairs on the front frame at +-20 mm, toed out
 10 degrees, through an LM393 with the threshold set for 6-8 cm on a cone
 (handout Figure 5). Output LOW = object (`OBSTACLE_ACTIVE`). Keep the range
 short: at the end of the track the border wall must not trigger a detour.
@@ -88,14 +115,15 @@ handout eq. (4)/(6), and a per-wheel PI loop on the encoders runs the motors.
 
 Choosing kp: with the sensors a distance L ahead of the axle and speed v, the
 offset obeys `e'' + kp*L*e' + kp*v*e = 0`. So `wn = sqrt(kp*v)` and
-`zeta = L*sqrt(kp) / (2*sqrt(v))`. For L = 0.06 m, v = 0.25 m/s, kp = 90:
-wn = 4.7 rad/s, zeta = 0.57. A longer L damps more, a higher v damps less.
+`zeta = L*sqrt(kp) / (2*sqrt(v))`. For L = 0.078 m (CAD), v = 0.25 m/s,
+kp = 90: wn = 4.7 rad/s, zeta = 0.74. A longer L damps more, a higher v damps less.
 
 ### 4. Track state machine (`LineNavigator`)
 
 | Situation | Detected by | Action |
 | --- | --- | --- |
 | Corner | >= 3 sensors black including exactly one outer, 2 samples in a row | Drive `cornerAdvance` (sensor offset + half tape width) so the axle sits on the corner, pivot toward it until the line is centred (at least 45 deg, at most 135), settle 120 ms, follow. Next corner armed after 10 cm |
+| Corner, `confirmCornerByLoss` (used for the CAD array) | The same pattern only starts `corner_check`: hold the heading for up to 7 cm | Line ends during the check: corner confirmed. Advance `cornerAdvanceAfterLoss` (sensor offset - half tape width = 53 mm), then pivot as above. Line still there after 7 cm: "not a corner", follow, re-armed as soon as the pattern clears. Obstacles are still checked during the check |
 | Line lost to a side | No black for 4 samples, last position beyond `sideTolerance` (between inner and outer sensor) | Pivot toward that side up to 120 deg, then sweep back to -120 deg. Not found: stop (`lost`) |
 | End of track | No black, last position near the centre | Creep 4 cm; still nothing: stop (`finished`) |
 | Cone | Obstacle sensor for 3 samples | Brake, pivot 60 deg away from the sensor that fired, drive out 18 cm sideways, turn parallel, pass 32 cm, turn 60 deg back in, drive to the line, advance onto it, pivot back toward the detour side until centred, follow |
@@ -136,8 +164,8 @@ track whose corners are not square.
 
 ## Results in the simulator (placeholders, not measurements)
 
-All vehicle and track numbers are assumptions (see the `.vehicle` files and
-`course.world`). Times include 1.5 s standing still for the gyro bias and the
+Geometry is from the team CAD. Motor, encoder, sensor and track numbers are
+still assumptions (see the `.vehicle` files and `course.world`). Times include 1.5 s standing still for the gyro bias and the
 ~1.8 s calibration sweep.
 
 ```sh
@@ -147,15 +175,16 @@ bash scripts/run-fw-sim.sh --seeds 10 track_serpentine track_cones track_cones_l
 
 | Scenario | Course | Result (seed 368) | 10 seeds |
 | --- | --- | --- | --- |
-| `track_serpentine` | No cones, analog array | End at 31.7 s, 6 corners, max 7 mm offset while following | 10/10 |
-| `track_cones` | Handout cones, analog | End at 43.2 s, 3 detours, 0 collisions | 10/10 |
-| `track_cones_lm393` | Handout cones, LM393 array | End at 43.5 s, 3 detours, 0 collisions | 10/10 |
-| `track_cones_on_line` | Cones on the tape centre | End at 44.7 s, 3 detours (one retried on the other side), 0 collisions | 10/10 |
+| `track_serpentine` | No cones, analog array | End at 32.9 s, 6 corners, max 4 mm offset while following, no false corner alarms | 10/10 |
+| `track_cones` | Handout cones, analog | End at 45.7 s, 3 detours, 0 collisions, no false alarms | 10/10 |
+| `track_cones_lm393` | Handout cones, LM393 array | End at 47.1 s, 3 detours, 0 collisions, max 11 mm offset, 7 false corner alarms rejected | 10/10 |
+| `track_cones_on_line` | Cones on the tape centre | End at 47.2 s, 3 detours (one retried on the other side), 0 collisions | 10/10 |
 | `track_gesture_stop` | DOWN gesture mid-run | Stops | 10/10 |
 
-A one-off stress check (not committed) also completed the course with a 4 %
-wheel size mismatch, 1.5 deg/s gyro bias, weaker motors with a larger
-deadband, blurrier sensors, and cones moved by 4-5 cm.
+A one-off stress check with the CAD geometry (not committed) also completed
+the course without collisions: 4 % wheel size mismatch, 1.5 deg/s gyro bias,
+half-speed motors with a larger deadband, blurrier sensors, cones moved by
+4-5 cm, and the LM393 array with wheel mismatch or weak motors.
 
 What the simulator does not cover: ambient IR, uneven floor and tape
 reflectance, sensor height changes, wheel slip in pivots, cone shapes other

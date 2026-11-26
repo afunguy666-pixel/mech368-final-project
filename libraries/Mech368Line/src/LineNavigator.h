@@ -63,7 +63,8 @@ class LineFollower {
 enum class NavState : uint8_t {
   Idle,               // stopped, waiting for start()
   Follow,             // PD on the line
-  CornerAdvance,      // wide black seen: drive the axle over the corner
+  CornerCheck,        // wide black seen (confirm mode): straight on until the line ends
+  CornerAdvance,      // corner: drive the axle over the corner
   CornerPivot,        // pivot toward the corner until the line is centred
   Settle,             // brief stop before following again
   Search,             // line lost to one side: sweep for it
@@ -87,6 +88,7 @@ inline const char* navStateName(NavState s) {
   switch (s) {
     case NavState::Idle: return "idle";
     case NavState::Follow: return "follow";
+    case NavState::CornerCheck: return "corner_check";
     case NavState::CornerAdvance: return "corner_advance";
     case NavState::CornerPivot: return "corner_pivot";
     case NavState::Settle: return "settle";
@@ -129,6 +131,17 @@ struct NavConfig {
   // at). Set 0 to use the measured heading instead (tracks without square
   // corners).
   float cornerAngle = degToRad(90);
+  // Narrow arrays (outer sensors within about half a tape width of the inner
+  // ones, e.g. +-10/+-30 mm on 50 mm tape) also show "wide black" when the
+  // robot is only 5-15 mm off centre. With confirmCornerByLoss the wide
+  // pattern only starts CornerCheck: the robot holds its heading and the
+  // corner is confirmed when the line then disappears within cornerConfirm
+  // (the bar has passed the crossing tape); otherwise following resumes. The
+  // bar is then past the far tape edge, so the axle needs
+  // cornerAdvanceAfterLoss = sensorAhead - tape width / 2 to reach the corner.
+  bool confirmCornerByLoss = false;
+  float cornerConfirm = 0.07f;
+  float cornerAdvanceAfterLoss = 0.035f;
   float approachSpeed = 0.15f;     // m/s for advances, creeping and detours
   float pivotRate = 3.0f;          // rad/s while pivoting to find the line
   float pivotSlowRate = 1.8f;      // rad/s once a sensor sees black
@@ -210,8 +223,25 @@ class LineNavigator {
       case NavState::Blocked:
         return Twist();
       case NavState::Follow: return follow(in);
+      case NavState::CornerCheck:
+        if (startDetour(in)) return Twist();
+        if (lost_ >= 2) {
+          holdHeading_ = in.heading;
+          advance_ = cfg.cornerAdvanceAfterLoss;
+          enter(NavState::CornerAdvance, in, side_ > 0 ? "corner left confirmed" : "corner right confirmed");
+          return Twist(cfg.approachSpeed, 0.0f);
+        }
+        if (travelled(in) >= cfg.cornerConfirm) {
+          // Re-arm as soon as the pattern clears, not after cornerRearm: a
+          // real corner may come right after a false alarm.
+          waitWideClear_ = true;
+          follower.reset();
+          enter(NavState::Follow, in, "not a corner");
+          return Twist();
+        }
+        return Twist(cfg.approachSpeed, holdHeading(in, holdHeading_));
       case NavState::CornerAdvance:
-        if (travelled(in) >= cfg.cornerAdvance) {
+        if (travelled(in) >= advance_) {
           enter(NavState::CornerPivot, in, side_ > 0 ? "pivot left" : "pivot right");
           return Twist();
         }
@@ -260,26 +290,18 @@ class LineNavigator {
     // Low-pass the heading along the line: the detour uses it as "the line's
     // direction", which is steadier than the instantaneous heading.
     trackHeading_ = wrapAngle(trackHeading_ + 0.02f * wrapAngle(in.heading - trackHeading_));
-    const bool obstacleArmed = in.distance - obstacleMark_ >= cfg.obstacleRearm;
-    if (obstacleArmed && (obstacleL_ >= cfg.obstacleSamples || obstacleR_ >= cfg.obstacleSamples)) {
-      int away;
-      if (obstacleL_ >= cfg.obstacleSamples && obstacleR_ >= cfg.obstacleSamples) {
-        away = cfg.preferredSide;
-      } else {
-        away = obstacleL_ >= cfg.obstacleSamples ? -1 : 1;  // go around the other side
-      }
-      side_ = away;
-      lineHeading_ = trackHeading_;
-      retried_ = false;
-      ++detours_;
-      enter(NavState::AvoidBrake, in, away > 0 ? "obstacle right: detour left" : "obstacle left: detour right");
-      return Twist();
-    }
-    const bool cornerArmed = in.distance - cornerMark_ >= cfg.cornerRearm;
+    if (startDetour(in)) return Twist();
+    if (waitWideClear_ && wide_ == 0) waitWideClear_ = false;
+    const bool cornerArmed = in.distance - cornerMark_ >= cfg.cornerRearm && !waitWideClear_;
     if (cornerArmed && wide_ >= cfg.wideSamples) {
       side_ = wideSide_;
       holdHeading_ = in.heading;
-      enter(NavState::CornerAdvance, in, side_ > 0 ? "corner left" : "corner right");
+      if (cfg.confirmCornerByLoss) {
+        enter(NavState::CornerCheck, in, side_ > 0 ? "possible corner left" : "possible corner right");
+      } else {
+        advance_ = cfg.cornerAdvance;
+        enter(NavState::CornerAdvance, in, side_ > 0 ? "corner left" : "corner right");
+      }
       return Twist(cfg.approachSpeed, 0.0f);
     }
     if (lost_ >= cfg.lostSamples) {
@@ -292,6 +314,24 @@ class LineNavigator {
       return Twist();
     }
     return follower.update(in.line.position, in.dt);
+  }
+
+  // Obstacle ahead while following (or checking a corner): start a detour.
+  bool startDetour(const NavInputs& in) {
+    const bool armed = in.distance - obstacleMark_ >= cfg.obstacleRearm;
+    if (!armed || (obstacleL_ < cfg.obstacleSamples && obstacleR_ < cfg.obstacleSamples)) return false;
+    int away;
+    if (obstacleL_ >= cfg.obstacleSamples && obstacleR_ >= cfg.obstacleSamples) {
+      away = cfg.preferredSide;
+    } else {
+      away = obstacleL_ >= cfg.obstacleSamples ? -1 : 1;  // go around the other side
+    }
+    side_ = away;
+    lineHeading_ = trackHeading_;
+    retried_ = false;
+    ++detours_;
+    enter(NavState::AvoidBrake, in, away > 0 ? "obstacle right: detour left" : "obstacle left: detour right");
+    return true;
   }
 
   void beginSearch(const NavInputs& in, int side, const char* why) {
@@ -459,8 +499,8 @@ class LineNavigator {
   uint32_t transitions_ = 0;
   int lost_ = 0, found_ = 0, obstacleL_ = 0, obstacleR_ = 0, wide_ = 0, wideSide_ = 0;
   int side_ = 1;  // +1 left, -1 right
-  bool sweepBack_ = false, retried_ = false;
-  float retreat_ = 0.0f;
+  bool sweepBack_ = false, retried_ = false, waitWideClear_ = false;
+  float retreat_ = 0.0f, advance_ = 0.0f;
   float startHeading_ = 0.0f, startDistance_ = 0.0f, elapsed_ = 0.0f;
   float holdHeading_ = 0.0f, target_ = 0.0f, lineHeading_ = 0.0f, trackHeading_ = 0.0f;
   float cornerMark_ = -1.0f, obstacleMark_ = -1.0f;

@@ -86,6 +86,7 @@ struct BatteryConfig {
 };
 struct VehicleConfig {
   double trackWidth = 0.10, wheelRadius = 0.020, bodyRadius = 0.07;
+  double bodyOffset = 0.0;  // collision circle centre ahead of the wheel axle (m)
   double maxWheelSpeed = 30.0;    // rad/s, no-load, full duty, nominal voltage
   double timeConstant = 0.08;     // s, first-order motor response
   double deadband = 0.06;         // |duty| below this does not move the wheel

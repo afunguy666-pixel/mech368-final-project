@@ -173,7 +173,7 @@ void Simulation::writeReport(const std::string& dir, const std::string& name,
       << num(h.delta) << "," << json(h.name) << "]";
   }
   d << "]},\"vehicle\":{\"track\":" << num(vc.trackWidth) << ",\"wheel\":" << num(vc.wheelRadius)
-    << ",\"body\":" << num(vc.bodyRadius) << ",\"source\":" << json(vc.source) << ",\"line\":[";
+    << ",\"body\":" << num(vc.bodyRadius) << ",\"bodyX\":" << num(vc.bodyOffset) << ",\"source\":" << json(vc.source) << ",\"line\":[";
   for (size_t i = 0; i < vc.lineSensors.size(); ++i)
     d << (i ? "," : "") << "[" << num(vc.lineSensors[i].x) << "," << num(vc.lineSensors[i].y) << ","
       << json(vc.lineSensors[i].name) << "]";

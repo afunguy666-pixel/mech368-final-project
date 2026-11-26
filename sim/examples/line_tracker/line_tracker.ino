@@ -9,8 +9,8 @@
 // motionPermitted() below) and the BLE E-stop stops the navigator.
 //
 // Hardware (course kit):
-//   - Line array: 4 x LTE-4206 / LTR-4206, 3 cm apart, 6 cm ahead of the
-//     wheel axle, on A0..A3 (index 0 = rightmost). Either raw phototransistor
+//   - Line array: 4 x LTE-4206 / LTR-4206 at -30, -10, +10, +30 mm, 78 mm
+//     ahead of the wheel axle (team CAD), on A0..A3 (index 0 = rightmost). Either raw phototransistor
 //     voltages (analog, best) or LM393 outputs (digital) - the same code
 //     reads both, the calibration sweep finds each sensor's range.
 //   - Obstacle IR pairs through an LM393 at the front corners: D12 (left),
@@ -43,13 +43,16 @@ const int OBSTACLE_ACTIVE = LOW;  // LM393 output level with an object in range
 
 const int LINE_COUNT = 4;
 const int LINE_PINS[LINE_COUNT] = {A0, A1, A2, A3};
-const float LINE_Y[LINE_COUNT] = {-0.045f, -0.015f, 0.015f, 0.045f};  // m, + = left
+const float LINE_Y[LINE_COUNT] = {-0.030f, -0.010f, 0.010f, 0.030f};  // m, + = left (CAD)
 const bool BLACK_IS_HIGH = true;     // pull-up wiring: less reflection -> higher voltage
 const uint16_t MIN_CAL_SPAN = 200;   // ADC counts (10 bit) between floor and tape
 
 // --------------------------------------------------------------- geometry ---
-const float TRACK = 0.11f;            // m between wheel centres
-const float WHEEL_RADIUS = 0.016f;    // m
+const float TRACK = 0.092f;           // m between wheel centres (CAD)
+const float WHEEL_RADIUS = 0.0325f;   // m, 65 mm wheels (CAD)
+const float SENSOR_AHEAD = 0.07825f;  // m from the wheel axle to the sensor line (CAD)
+const float TAPE_WIDTH = 0.05f;       // m (handout)
+const float MOTOR_TOP_SPEED = 0.95f;  // m/s at full duty: MEASURE (assumed ~290 rpm)
 const float COUNTS_PER_REV = 600.0f;  // 300 ppr on channel A, both edges
 const float MAX_WHEEL_SPEED = 0.45f;  // m/s, a bit under the motor's top speed
 const float CAL_SWEEP = 40.0f;        // degrees each side
@@ -196,6 +199,18 @@ void setup() {
   if (!APDS.begin()) Serial.println("APDS init failed");
 
   sensors.configure(LINE_COUNT, LINE_Y);
+  // Geometry for the navigator: the axle has to travel this far after the
+  // sensors see a corner (or the line again) to sit on the tape centre.
+  nav.cfg.sensorAhead = SENSOR_AHEAD;
+  nav.cfg.cornerAdvance = SENSOR_AHEAD + TAPE_WIDTH / 2;
+  nav.cfg.rejoinAdvance = SENSOR_AHEAD + TAPE_WIDTH / 2;
+  // Inner sensors +-10 mm, outer +-30 mm: the 50 mm tape alone can cover three
+  // of them, so a corner is only confirmed when the line then ends.
+  nav.cfg.confirmCornerByLoss = true;
+  nav.cfg.cornerAdvanceAfterLoss = SENSOR_AHEAD - TAPE_WIDTH / 2;
+  nav.cfg.sideTolerance = 0.018f;     // between the inner (10) and outer (30) offsets
+  nav.cfg.centredTolerance = 0.008f;
+  leftPI.feedForward = rightPI.feedForward = 1.0f / MOTOR_TOP_SPEED;
   sensors.blackIsHigh = BLACK_IS_HIGH;
   odometry.reset(Pose());
   Serial.println("line tracker ready: keep still, then swipe UP to calibrate and start, DOWN to stop");

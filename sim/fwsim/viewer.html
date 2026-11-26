@@ -216,7 +216,7 @@ function drawWorld() {
     ctx.lineTo(ox + Math.cos(a) * len * k, oy - Math.sin(a) * len * k); ctx.stroke(); ctx.setLineDash([]);
   });
   const robot = S.hit[idx] ? css('--bad') : css('--robot');
-  ctx.fillStyle = robot; ctx.globalAlpha = 0.18; ctx.beginPath(); ctx.arc(X(x), Y(y), V.body * k, 0, 7); ctx.fill();
+  ctx.fillStyle = robot; ctx.globalAlpha = 0.18; ctx.beginPath(); const [bx, by] = P(V.bodyX || 0, 0); ctx.arc(bx, by, V.body * k, 0, 7); ctx.fill();
   ctx.globalAlpha = 1; ctx.strokeStyle = robot; ctx.lineWidth = 2; ctx.stroke();
   ctx.fillStyle = css('--ink');
   for (const side of [1, -1]) {
@@ -224,7 +224,7 @@ function drawWorld() {
                [V.wheel, side * (V.track / 2 + 0.006)], [-V.wheel, side * (V.track / 2 + 0.006)]].map(p => P(...p));
     ctx.beginPath(); c.forEach((p, i) => i ? ctx.lineTo(...p) : ctx.moveTo(...p)); ctx.fill();
   }
-  const [hx, hy] = P(V.body, 0); ctx.strokeStyle = robot; ctx.beginPath(); ctx.moveTo(X(x), Y(y)); ctx.lineTo(hx, hy); ctx.stroke();
+  const [hx, hy] = P((V.bodyX || 0) + V.body, 0); ctx.strokeStyle = robot; ctx.beginPath(); ctx.moveTo(X(x), Y(y)); ctx.lineTo(hx, hy); ctx.stroke();
   V.line.forEach(([sx, sy], i) => {
     const [px, py] = P(sx, sy); ctx.beginPath(); ctx.arc(px, py, 3, 0, 7);
     ctx.fillStyle = S.line[i][idx] > 0.5 ? css('--bad') : css('--muted'); ctx.fill();
