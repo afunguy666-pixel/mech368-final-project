@@ -134,6 +134,9 @@ class Vehicle : public ScriptedIO {
 
   Pose2 pose;
   double omegaL = 0, omegaR = 0;   // wheel rad/s
+  // External rollers for the unpowered measurement fixture, rad/s.
+  bool handRolled = false;
+  double handOmegaL = 0, handOmegaR = 0;
   double thetaL = 0, thetaR = 0;   // wheel angle, rad
   double dutyL = 0, dutyR = 0;     // signed motor command -1..1
   double speed = 0, yawRate = 0, accel = 0;

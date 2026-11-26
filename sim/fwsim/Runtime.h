@@ -136,6 +136,9 @@ class Board {
   int analogReadBits = 10, analogWriteBits = 8;
 
   std::deque<char> serialIn;
+  bool usbAttached = true;
+  unsigned usbWriteLimit = 128;
+  int aclCredits = 4;
   std::string serialPartial;
   std::vector<SerialLine> serialOut;
   std::vector<PinEvent> pinLog;

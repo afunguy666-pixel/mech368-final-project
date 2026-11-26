@@ -115,18 +115,22 @@ void Simulation::writeReport(const std::string& dir, const std::string& name,
     static const char* types[] = {"?", "motion", "estop", "status"};
     std::ofstream f(base + ".frames.csv");
     f << "sent_ms,deliver_ms,direction,fate,decoded,type,sequence,session,challenge,"
-         "linear_or_flags,angular\n";
+         "linear_or_flags,angular,robot_sample_ms\n";
     for (const auto& r : frames_) {
       const int type = static_cast<int>(r.frame.type);
       f << num(r.sentUs / 1000.0, 3) << ',' << (r.deliverUs ? num(r.deliverUs / 1000.0, 3) : "") << ','
         << (r.fromRemote ? "remote->robot" : "robot->remote") << ',' << fates[r.fate] << ','
-        << r.decoded;
+        << (r.decoded || r.telemetryKind != 0);
       if (r.decoded)
         f << ',' << types[type >= 1 && type <= 3 ? type : 0] << ',' << r.frame.sequence << ','
           << r.frame.session << ',' << r.frame.challenge << ',' << r.frame.linear << ','
-          << r.frame.angular;
+          << r.frame.angular << ',';
+      else if (r.telemetryKind) {
+        static const char* names[] = {"", "pose", "ir", "wheels", "env"};
+        f << ',' << names[r.telemetryKind] << ',' << r.telemetrySequence << ",,,,," << r.sampleMs;
+      }
       else
-        f << ",,,,,,";
+        f << ",,,,,,,";
       f << "\n";
     }
   }

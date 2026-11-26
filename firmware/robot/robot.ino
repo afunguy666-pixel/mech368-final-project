@@ -3,9 +3,11 @@
 #include <Arduino_APDS9960.h>
 #include <DirectLineTracker.h>
 #include <Mech368Protocol.h>
+#include "TelemetryPublisher.h"
 
 namespace wire = mech368::ble;
 wire::Receiver receiver;
+TelemetryPublisher telemetry;
 bool motionPermitted() { return receiver.allowed(millis()); }
 mech368::DirectLineTracker tracker(motionPermitted);
 void leftEncoderIsr() { tracker.leftEdge(); }
@@ -22,8 +24,12 @@ bool linkUp = false;
 bool stopSinceGestureCheck = false;
 uint32_t lastStatusAt = 0;
 uint32_t sessionCounter = 0;
+#ifdef MECH368_TRACE_ACCEPTED
+bool acceptedEdge = false; // optional logic-analyser marker on the unused D0
+#endif
 
 void publishStatus(uint32_t now) {
+  if (HCI.availableAclPackets() < 1) return;
   uint8_t bytes[wire::kFrameSize];
   if (wire::encode(receiver.status(now, tracker.outputsEnabled()), bytes, sizeof(bytes)))
     statusCharacteristic.writeValue(bytes, sizeof(bytes));
@@ -37,6 +43,7 @@ void onConnect(BLEDevice central) {
   sessionCounter += static_cast<uint32_t>(micros()) | 1U;
   if (sessionCounter == 0) ++sessionCounter;
   receiver.connect(sessionCounter, millis());
+  telemetry.reset(millis());
   publishStatus(millis());
 }
 
@@ -60,13 +67,24 @@ void onCommand(BLEDevice central, BLECharacteristic characteristic) {
   // A newly arrived heartbeat must not hide an expiry during BLE.poll().
   if (!receiver.allowed(now)) tracker.stop();
   wire::Type accepted;
-  if (receiver.receive(bytes, sizeof(bytes), now, &accepted) && accepted == wire::Type::Stop) {
+  if (!receiver.receive(bytes, sizeof(bytes), now, &accepted)) return;
+  if (accepted == wire::Type::Stop) {
     tracker.stop();
     stopSinceGestureCheck = true;
   }
+#ifdef MECH368_TRACE_ACCEPTED
+  else if (receiver.allowed(now)) {
+    acceptedEdge = !acceptedEdge;
+    digitalWrite(D0, acceptedEdge ? HIGH : LOW);
+  }
+#endif
 }
 
 void setup() {
+#ifdef MECH368_TRACE_ACCEPTED
+  pinMode(D0, OUTPUT);
+  digitalWrite(D0, LOW);
+#endif
   tracker.begin(leftEncoderIsr, rightEncoderIsr);
   pinMode(LED_BUILTIN, OUTPUT);
   bleReady = BLE.begin();
@@ -75,6 +93,7 @@ void setup() {
   BLE.setAdvertisedService(controlService);
   controlService.addCharacteristic(commandCharacteristic);
   controlService.addCharacteristic(statusCharacteristic);
+  controlService.addCharacteristic(telemetry.characteristic);
   BLE.addService(controlService);
   BLE.setEventHandler(BLEConnected, onConnect);
   BLE.setEventHandler(BLEDisconnected, onDisconnect);
@@ -102,4 +121,5 @@ void loop() {
   }
   const bool fault = !bleReady || !linkUp || !receiver.allowed(now);
   digitalWrite(LED_BUILTIN, fault ? ((now / 125U) % 2U ? HIGH : LOW) : HIGH);
+  if (linkUp) telemetry.update(tracker, receiver);
 }

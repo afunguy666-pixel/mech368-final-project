@@ -161,6 +161,7 @@ class RemoteLink {
   }
   void sent(bool stop = false) { sent_ = true; sentStop_ = stop; sentSequence_ = nextSequence_++; }
   bool ready() const { return session_ != 0; }
+  uint32_t session() const { return session_; }
   bool healthy(uint32_t now) const {
     return ack_ && static_cast<uint32_t>(now - ackAt_) < MotionSafety::kTimeoutMs;
   }

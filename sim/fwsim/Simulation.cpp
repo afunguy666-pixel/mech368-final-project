@@ -1,4 +1,5 @@
 #include "Simulation.h"
+#include <Mech368Telemetry.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -251,7 +252,13 @@ void Simulation::onPacket(const RadioPacket& p) {
   const int sender = p.fromCentral ? p.central : p.peripheral;
   r.fromRemote = sender == Remote;
   r.fate = p.fate;
-  r.decoded = mech368::ble::decode(p.bytes.data(), p.bytes.size(), r.frame);
+  if (p.uuid == mech368::telemetry::kUuid && mech368::telemetry::valid(p.bytes.data(), p.bytes.size())) {
+    r.telemetryKind = p.bytes[0] & 15;
+    r.telemetrySequence = mech368::ble::get16(p.bytes.data() + 2);
+    r.sampleMs = mech368::ble::get32(p.bytes.data() + 4);
+  } else {
+    r.decoded = mech368::ble::decode(p.bytes.data(), p.bytes.size(), r.frame);
+  }
   frames_.push_back(r);
   if (!r.fromRemote && r.decoded && r.frame.type == mech368::ble::Type::Status && r.delivered() &&
       p.fate == RadioPacket::Delivered)
