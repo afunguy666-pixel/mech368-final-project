@@ -12,3 +12,4 @@ for test in tests/*_test.cpp; do
   "$executable"
   printf '%s\n' "PASS: $test"
 done
+"${PYTHON:-python3}" -m unittest discover -s tests -p 'test_*.py'

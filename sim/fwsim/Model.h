@@ -62,7 +62,7 @@ struct LineSensorConfig {
   std::string name;
   int pin = -1;
   bool analog = true;
-  double x = 0, y = 0;                  // chassis frame: x forward, y left (m)
+  double x = 0, y = 0;                  // floor spot after loading, x forward, y left (m)
   double onVolts = 2.8, offVolts = 0.4; // analog output over line / floor
   int onLevel = 1;                      // digital output level over the line
   double spot = 0.004;                  // sensing spot radius (m)
@@ -87,6 +87,11 @@ struct BatteryConfig {
 struct VehicleConfig {
   double trackWidth = 0.10, wheelRadius = 0.020, bodyRadius = 0.07;
   double bodyOffset = 0.0;  // collision circle centre ahead of the wheel axle (m)
+  double noseDown = 0.0;    // static chassis pitch on its supports (rad)
+  struct PlanImage {
+    std::string png;
+    Vec2 lo, hi;            // ground-plane bounds relative to the axle (m)
+  } plan;
   double maxWheelSpeed = 30.0;    // rad/s, no-load, full duty, nominal voltage
   double timeConstant = 0.08;     // s, first-order motor response
   double deadband = 0.06;         // |duty| below this does not move the wheel
@@ -129,6 +134,9 @@ class Vehicle : public ScriptedIO {
 
   Pose2 pose;
   double omegaL = 0, omegaR = 0;   // wheel rad/s
+  // External rollers for the unpowered measurement fixture, rad/s.
+  bool handRolled = false;
+  double handOmegaL = 0, handOmegaR = 0;
   double thetaL = 0, thetaR = 0;   // wheel angle, rad
   double dutyL = 0, dutyR = 0;     // signed motor command -1..1
   double speed = 0, yawRate = 0, accel = 0;

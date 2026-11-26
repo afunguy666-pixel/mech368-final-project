@@ -13,41 +13,40 @@ wires it to the robot and the firmware simulator checks it on the field map.
 | `libraries/Mech368Line/src/LineNavigator.h` | PD line follower and the track state machine (corners, lost line, end, detour) |
 | `libraries/Mech368Line/src/DriveMath.h` | Twist/wheel kinematics (handout eq. 4, 6), odometry, wheel speed PI, gyro bias, roll/pitch |
 | `tests/line_nav_test.cpp` | Host tests (run by `scripts/test-host.sh`) |
-| `sim/examples/line_tracker/line_tracker.ino` | Example sketch: sensors, encoders, gyro, DRV8833 outputs (slow decay, nSLEEP, nFAULT), calibration sweep |
+| `libraries/Mech368Tracker/src/DirectLineTracker.cpp` | Direct wiring, encoder scale, gyro, DRV8833 outputs and calibration sweep |
+| `firmware/robot/robot.ino` | Autonomous car with BLE E-stop, local APDS recovery and a watchdog on the drive outputs |
+| `sim/examples/line_tracker/line_tracker.ino` | Standalone navigation example with local gestures |
 | `sim/vehicles/ir_tracker.vehicle`, `ir_tracker_lm393.vehicle` | Simulated robot with analog / LM393 line sensors |
 | `sim/fwsim/scenarios/line_tracker.cpp` | Course scenarios (see Results) |
 
-**Status:** simulation and host tests only. Nothing here has run on hardware,
-and the sketch has not been compiled for the board in this environment (it is
-compiled for the simulator with warnings on). It has no BLE link and no
-MotionSafety gate: before it drives the real robot, merge it into
-`firmware/robot` so every motor command passes the single safety-gated
-output and the E-stop stops the navigator (`motionPermitted()` marks the spot).
+**Operating the direct-wired car.** Place the car on the line, let the gyro settle
+and wait for a fresh BLE heartbeat. Swipe UP on the car to calibrate and follow.
+Disconnect, heartbeat expiry or remote E-stop drives D8 (nSLEEP) low and cancels
+the current manoeuvre. After reconnection a fresh UP is required to start.
+After an E-stop any fresh local swipe clears the latch. A later heartbeat and
+a separate UP allow movement. An interrupted calibration repeats around the original heading.
+The paired firmware compiles for the Nano. Loaded stopping time and sensor
+thresholds still need bench measurements.
 
-## Robot geometry (team CAD, 2026-11-26)
+## Robot geometry
 
-The simulated robot follows the team's SolidWorks assembly. The STEP file
-itself is not in the repository.
+The measurements come from the default configuration of `Car/寻线小车装配体.SLDASM`, including the four-pair line clamp, the front obstacle bracket and both retainers. The floor frame starts directly below the drive axle midpoint, with x forward and y left.
 
-| Item | Value |
+| Item | Geometry or simulator setting |
 | --- | --- |
-| Wheels | 65 mm diameter, centres +-46 mm (track 92 mm), at the rear |
-| Ball caster | front, under the sensor frame |
-| Footprint | fits the 150 mm handout cylinder centred 15.25 mm ahead of the axle (CAD envelope 148 mm) |
-| Sensor line | on the front frame, 2 mm behind its front edge = 78.25 mm ahead of the axle |
-| Line sensors | y = -30, -10, +10, +30 mm (A0 = -30, rightmost) |
-| Obstacle sensors | y = +-20 mm, toed out 10 deg |
+| Drive wheels | 65 mm diameter, 92 mm centre spacing |
+| Ball caster | Spacer thickness increased from 9.9 to 14.9 mm, moving the ball down 5.0 mm |
+| Support on level ground | With the chassis level, the caster extends about 0.003 mm below the wheel tangent plane. The three-contact solution is about 0.004° nose-up. The simulator uses 0°. |
+| Line sensor clamp | 71 mm across and 16.4 mm fore–aft at the mounting pads. The pads are 4.8 mm thick and their lower face is 5.5 mm above the floor. |
+| Line probe mounting height | The nominal low point of each lens sits 5.0 mm above the floor and projects 0.5 mm below the clamp. |
+| Four line spots | The simulator samples directly below each pair's midpoint, 75.75 mm ahead of the axle at y = −30, −10, +10 and +30 mm (A0 to A3). |
+| Obstacle sensing | The nominal LTE-4206 / LTR-4206 lens tips sit 78.25 mm ahead of the axle at y = ±20.00 mm. On each side the emitter is 28.25 mm above the floor and the receiver is 21.75 mm above it. |
+| Obstacle bore axes | Both pairs point straight ahead at 0.00° yaw and pitch relative to the chassis. The left (D12) and right (D11) axes are 40.00 mm apart. |
+| Collision check | 150 mm diameter circle centred 15.25 mm ahead of the axle. The projected CAD parts span a circle of about 149.6 mm diameter around that centre. |
 
-Two things in the CAD need attention before building:
+Each emitter and receiver enters its stepped bore from above. The flange seats against the shoulder between the 3.45 mm guide and 4.50 mm counterbore. The fore–aft axes tilt inward 21.8° each and meet at the floor. They are 4.0 mm apart at 5.0 mm height and 4.4 mm apart at the clamp underside. Use a 5 mm gauge under the lenses before securing them. [Clamp and pair mounting dimensions](ir-pair-mount.png)
 
-- **Sensor height.** The chassis plate is about 35-39 mm above the floor (wheel
-  bottom at z = -39 mm). Reflective IR line sensors need 3-8 mm, so the line
-  sensors must hang below the frame on a bracket. Obstacle sensors at plate
-  height are fine.
-- **Caster height.** The ball caster's lowest point is 2.5 mm above the wheels'
-  contact plane, so the robot tilts forward about 2.9 deg until the ball
-  touches. That lowers the front by about 4 mm. Shim the caster or include
-  the tilt when setting the sensor height.
+The centre of each shroud opening is 7.05 mm ahead of its seating shoulder. Both centres are 20.00 mm from the vehicle centreline. The simulator casts from the nominal lens tips with an assumed 80 mm range and 20° full field of view. The replay’s **CAD underside** panel overlays the four line spots and both forward sensor axes. [Obstacle mount angles](obstacle-mount-yaw.png) · [Side elevation and ground contacts](cad-ground-contact.png)
 
 ## Sensor hardware
 
@@ -78,8 +77,8 @@ machine). An array whose outer sensors sit more than one tape width (plus the
 sensor spot) from the opposite inner sensor would not need it, for example
 +-15/+-45 mm. That is wider than the CAD frame allows.
 
-**Obstacle pair:** two LTE/LTR pairs on the front frame at +-20 mm, toed out
-10 degrees, through an LM393 with the threshold set for 6-8 cm on a cone
+**Obstacle pair:** two forward-facing LTE/LTR pairs at ±20 mm on the front frame. Set the LM393
+threshold for a detection distance of 6–8 cm on a cone
 (handout Figure 5). Output LOW = object (`OBSTACLE_ACTIVE`). Keep the range
 short: at the end of the track the border wall must not trigger a detour.
 
@@ -115,15 +114,15 @@ handout eq. (4)/(6), and a per-wheel PI loop on the encoders runs the motors.
 
 Choosing kp: with the sensors a distance L ahead of the axle and speed v, the
 offset obeys `e'' + kp*L*e' + kp*v*e = 0`. So `wn = sqrt(kp*v)` and
-`zeta = L*sqrt(kp) / (2*sqrt(v))`. For L = 0.078 m (CAD), v = 0.25 m/s,
-kp = 90: wn = 4.7 rad/s, zeta = 0.74. A longer L damps more, a higher v damps less.
+`zeta = L*sqrt(kp) / (2*sqrt(v))`. For L = 0.07575 m (CAD), v = 0.25 m/s,
+and kp = 90, wn = 4.7 rad/s and zeta = 0.72. A longer L damps more, a higher v damps less.
 
 ### 4. Track state machine (`LineNavigator`)
 
 | Situation | Detected by | Action |
 | --- | --- | --- |
 | Corner | >= 3 sensors black including exactly one outer, 2 samples in a row | Drive `cornerAdvance` (sensor offset + half tape width) so the axle sits on the corner, pivot toward it until the line is centred (at least 45 deg, at most 135), settle 120 ms, follow. Next corner armed after 10 cm |
-| Corner, `confirmCornerByLoss` (used for the CAD array) | The same pattern only starts `corner_check`: hold the heading for up to 7 cm | Line ends during the check: corner confirmed. Advance `cornerAdvanceAfterLoss` (sensor offset - half tape width = 53 mm), then pivot as above. Line still there after 7 cm: "not a corner", follow, re-armed as soon as the pattern clears. Obstacles are still checked during the check |
+| Corner, `confirmCornerByLoss` (CAD array) | Drive straight for up to 7 cm from a debounced outer-sensor pattern. A sustained pattern on the opposite side starts a new 7 cm check on that side. | When the tape disappears, advance another 50.75 mm and pivot toward the confirmed side. If the tape continues, resume following and re-arm when the pattern clears. Obstacle sensing stays active. |
 | Line lost to a side | No black for 4 samples, last position beyond `sideTolerance` (between inner and outer sensor) | Pivot toward that side up to 120 deg, then sweep back to -120 deg. Not found: stop (`lost`) |
 | End of track | No black, last position near the centre | Creep 4 cm; still nothing: stop (`finished`) |
 | Cone | Obstacle sensor for 3 samples | Brake, pivot 60 deg away from the sensor that fired, drive out 18 cm sideways, turn parallel, pass 32 cm, turn 60 deg back in, drive to the line, advance onto it, pivot back toward the detour side until centred, follow |
@@ -164,32 +163,26 @@ track whose corners are not square.
 
 ## Results in the simulator (placeholders, not measurements)
 
-Geometry is from the team CAD. Motor, encoder, sensor and track numbers are
-still assumptions (see the `.vehicle` files and `course.world`). Times include 1.5 s standing still for the gyro bias and the
-~1.8 s calibration sweep.
+The times below run from power-on to the firmware's finish or stop command and include the start gesture and calibration sweep. Motor response, optical response and field dimensions are simulator inputs awaiting bench measurements.
 
 ```sh
-bash scripts/run-fw-sim.sh track_cones            # one run with full log + replay
+bash scripts/run-fw-sim.sh robot_track_cones robot_track_estop robot_track_watchdog
+bash scripts/run-fw-sim.sh track_cones            # standalone example
 bash scripts/run-fw-sim.sh --seeds 10 track_serpentine track_cones track_cones_lm393 track_cones_on_line
 ```
 
-| Scenario | Course | Result (seed 368) | 10 seeds |
-| --- | --- | --- | --- |
-| `track_serpentine` | No cones, analog array | End at 32.9 s, 6 corners, max 4 mm offset while following, no false corner alarms | 10/10 |
-| `track_cones` | Handout cones, analog | End at 45.7 s, 3 detours, 0 collisions, no false alarms | 10/10 |
-| `track_cones_lm393` | Handout cones, LM393 array | End at 47.1 s, 3 detours, 0 collisions, max 11 mm offset, 7 false corner alarms rejected | 10/10 |
-| `track_cones_on_line` | Cones on the tape centre | End at 47.2 s, 3 detours (one retried on the other side), 0 collisions | 10/10 |
-| `track_gesture_stop` | DOWN gesture mid-run | Stops | 10/10 |
+The cone scenarios also check the obstacle inputs in isolation. A 1 mm diameter target placed 60 mm from either lens on its centre ray or at either 10° edge pulls its corresponding pin low. At 20° in either direction both inputs stay high. The paired cases also monitor D8 during E-stop and heartbeat loss.
 
-A one-off stress check with the CAD geometry (not committed) also completed
-the course without collisions: 4 % wheel size mismatch, 1.5 deg/s gyro bias,
-half-speed motors with a larger deadband, blurrier sensors, cones moved by
-4-5 cm, and the LM393 array with wheel mismatch or weak motors.
+| Scenario | Seed 368 | Seeds 1–10 |
+| --- | --- | --- |
+| `robot_track_cones` | Paired demo firmware stopped at 49.68 s, 3 detours, zero contacts, 4.2 mm peak offset while following | 10/10 |
+| `track_serpentine` | Stopped at 33.31 s, 6 corners, 3.0 mm peak offset while following | 10/10 |
+| `track_cones` | Stopped at 47.69 s, 3 detours, zero contacts | 10/10 |
+| `track_cones_lm393` | Stopped at 49.35 s, 3 detours, zero contacts, 11.5 mm peak offset while following | 10/10 |
+| `track_cones_on_line` | Stopped at 47.54 s, 3 detours, one retry on the other side, zero contacts | 10/10 |
+| `track_gesture_stop` | Stopped on the local DOWN gesture | 10/10 |
 
-What the simulator does not cover: ambient IR, uneven floor and tape
-reflectance, sensor height changes, wheel slip in pivots, cone shapes other
-than circles, real comparator hysteresis, and the BLE link. Check each one on
-the bench.
+Earlier stress runs with the previous geometry used wheel mismatch, extra gyro bias, slower motors, blurrier spots and shifted cones. The current checks assume a level floor, rigid wheels and a fixed optical response. Ambient IR, changing floor reflectance, tyre slip and actual mounted sensor height require bench measurements.
 
 ## References
 

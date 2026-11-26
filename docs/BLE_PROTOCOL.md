@@ -8,9 +8,11 @@ Source: `mech368-final-project.pdf`, course handout, page 3 (read 2026-11-20).
 Two Nano 33 BLE Sense Rev2 boards communicate using ArduinoBLE. The course
 requires zero motor speeds within at most 500 ms without a valid packet,
 flashing disconnect indicators at both ends, and a remote E-stop latched until
-an APDS-9960 gesture on the robot. This phase implements communication and the
-existing software motion gate. It does NOT implement or verify physical stops,
-IMU steering, a physical E-stop switch, or APDS-9960 recovery.
+an APDS-9960 gesture on the robot. The direct-wired firmware gates the DRV8833
+through D8 and reads the onboard APDS. The handheld accepts an active-low
+stop on D2. Loaded stopping time and physical button timing await bench measurements.
+The additional 0004 characteristic carries pose and diagnostics.
+[Recorder and wire layout](TELEMETRY.zh-CN.md)
 
 Robot = peripheral/server; remote = central/client. Service UUID
 `c4130001-3680-4f01-9e10-627e70bca001`. Command characteristic uses `0002`
@@ -41,7 +43,7 @@ Motion bounds are +/-1000 mm/s and +/-4000 mrad/s. These are parser bounds,
 not approved robot speeds. The remote sends ONLY zero motion in this phase.
 E-stop must carry zero velocity fields. Unknown types, flag bits, or versions
 are rejected. Status flags: bit 0 ACK valid, bit 1 E-stop latched, bit 2 software
-motion permitted, bit 3 actual outputs disabled (always set in this phase).
+motion permitted, bit 3 driver disabled (the firmware commands nSLEEP low).
 An ACK means the protocol accepted the command, not that a motor moved.
 
 ## Freshness and safety
@@ -66,16 +68,16 @@ An ACK means the protocol accepted the command, not that a motor moved.
   Delayed ACKs can conservatively cause reconnect; tune with measurements.
 - Robot flashes its built-in LED when disconnected, timed out, BLE init fails,
   or E-stop is latched. Remote flashes until it has fresh ACK progress.
-- Serial `e` on remote requests E-stop, repeated with fresh sequence/challenge.
-  This input is deliberately sticky until the remote resets. It is a bench
-  trigger, not a physical emergency stop. No BLE command can unlock the robot.
-- APDS recovery remains a `false` placeholder. Future code must supply a fresh
-  local gesture edge, preserving E-stop precedence and requiring a later motion
-  command. Original MotionSafety tests cover simultaneous stop/recovery.
+- Serial `e` on the remote requests an E-stop. The remote repeats it across
+  loss or reconnect until the robot acknowledges a matching stop sequence with
+  its latch set. It then resumes sending zero-speed heartbeats.
+- Any fresh APDS swipe on the car (UP, DOWN, LEFT or RIGHT) clears that latch. A stop received in the same poll
+  takes priority. The car requires a later valid motion packet and a separate
+  local UP to start again. A local DOWN cancels navigation.
 
 ## Limits of nonblocking behavior
 
-ArduinoBLE 1.4.1 public connect, service discovery, subscription and disconnect
+ArduinoBLE public connect, service discovery, subscription and disconnect
 APIs are synchronous internally. The remote performs them in separate loop
 phases and sets an ATT timeout of 100 ms; discovery can contain multiple such
 waits. Retry is scheduled at 1 s. The robot never performs central discovery.
@@ -93,15 +95,15 @@ runtime timing plus a counter, is not persistent or cryptographically random,
 and can repeat across reset. There is no bonding, peer allowlist, encryption
 policy, or protection against a malicious radio peer. Multiple matching robots
 are not distinguished: operate only one bench pair until pairing is implemented.
-E-stop latch is RAM-only. No GPIO for any motor, encoder, battery or external
-switch is configured; absent outputs do not establish safe electrical defaults.
+The E-stop latch resides in RAM. On boot the car commands nSLEEP low before
+setting the bridge inputs or starting the sensors and radio.
 
 ## Reproducible checks
 
 ```
 bash scripts/test-host.sh
-arduino-cli core install arduino:mbed_nano@4.4.1
-arduino-cli lib install ArduinoBLE@1.4.1
+arduino-cli core install arduino:mbed_nano@4.6.0
+arduino-cli lib install ArduinoBLE@2.1.1 Arduino_APDS9960@1.0.4 Arduino_BMI270_BMM150@1.2.4
 bash scripts/compile-firmware.sh
 ```
 
@@ -122,9 +124,9 @@ ACK freshness. Original MotionSafety source and tests are unchanged.
    Distinguish radio link loss from a connected-but-silent peer.
 4. Inject short/oversized/bad-CRC/out-of-range/duplicate/old-session/expired-token
    frames; verify they cannot extend the watchdog or ACK health.
-5. Send `e`, then motion packets and reconnect: robot remains latched. Until
-   APDS is integrated, robot reset clears its RAM latch; remote reset only clears
-   its sticky request. Never use either reset as an approved motor re-arm path.
+5. Send `e`, then reconnect. Check D8 stays low with the latch set. Swipe UP on
+   the car to clear the latch. Confirm D8 stays low through the next heartbeat
+   and only rises after another UP.
 6. Measure worst loop time, last valid packet to disabled output and LED latency
-   under interference and connection setup. This phase has no physical motor
-   output to measure; record software gate separately from hardware stop tests.
+   under interference and connection setup. Capture D8, bridge outputs and wheel
+   speed to distinguish driver inhibition from the time the wheels reach rest.

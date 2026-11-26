@@ -273,6 +273,43 @@ void testLostAndEnd() {
   assert(!l.nav.running());
 }
 
+void testOppositeBranchDuringCornerCheck() {
+  Script s;
+  s.nav.cfg.confirmCornerByLoss = true;
+  s.line(false, true, true, false);
+  s.nav.start(s.in);
+  s.line(false, true, true, true);  // slightly off-centre approaching the corner
+  assert(s.runUntil(NavState::CornerCheck, 5) >= 0);
+  s.line(true, true, true, true);   // tape spans the array at the crossing
+  for (int i = 0; i < 65; ++i) s.step();
+  s.line(true, true, true, false);  // right branch becomes visible
+  for (int i = 0; i < 40; ++i) s.step();
+  assert(s.nav.state() == NavState::CornerCheck);
+  s.line(false, false, false, false);
+  assert(s.runUntil(NavState::CornerPivot, 200) >= 0);
+  assert(s.step().omega < 0);       // turn toward the actual branch
+}
+
+void testBranchAtCornerCheckTimeout() {
+  Script s;
+  s.nav.cfg.confirmCornerByLoss = true;
+  s.line(false, true, true, false);
+  s.nav.start(s.in);
+  s.line(false, true, true, true);
+  assert(s.runUntil(NavState::CornerCheck, 5) >= 0);
+  s.line(true, true, true, true);
+  s.step();
+  s.in.distance += s.nav.cfg.cornerConfirm;
+  s.line(true, true, true, false);  // new branch first seen on the last sample of the old check
+  s.step();
+  assert(s.nav.state() == NavState::Follow);
+  s.step();
+  assert(s.nav.state() == NavState::CornerCheck);
+  s.line(false, false, false, false);
+  assert(s.runUntil(NavState::CornerPivot, 200) >= 0);
+  assert(s.step().omega < 0);
+}
+
 void testDetour() {
   Script s;
   s.line(false, true, true, false);
@@ -336,6 +373,8 @@ int main() {
   testCorner();
   testCornerNeedsMinPivot();
   testCornerConfirmByLoss();
+  testOppositeBranchDuringCornerCheck();
+  testBranchAtCornerCheckTimeout();
   testLostAndEnd();
   testDetour();
   std::puts("line_nav_test: all assertions passed");

@@ -4,21 +4,23 @@
 
 > 本文是 [README.md](README.md) 的中文对照版。代码、注释和程序输出都是英文；两个版本如有出入，以英文版为准。
 
-这是两块 Arduino Nano 33 BLE Sense Rev2 开发板的开发框架：一块装在机器人上，一块装在手持遥控器里。
-第一阶段实现了 BLE 指令/状态传输、可移植的数据包校验，并接入了现有的运动许可状态机。
-遥控器目前只发送零速心跳包，或者由串口触发的急停（E-stop）。
-所有实际的电机输出都还没有实现（处于禁用状态），也没有假定任何驱动器引脚。
-这还**不是**一台能工作的机器人，不是经过验证的安全系统，也不是可以提交的项目。
+直连版小车用 A0–A3 读取四路巡线，两路 LM393 检测锥桶，DRV8833 驱动电机。
+两块 Nano 33 BLE Sense Rev2 分别运行 `firmware/robot` 和 `firmware/remote`。
+遥控器持续发送心跳，在遥控器 USB 串口输入 `e` 可急停。链路正常时，在车上向上挥手可标定并启动。
+急停后，在车上向任一方向挥手可解除锁存。收到新的心跳后再向上挥手，小车才重新启动。行驶中向下挥手可在车上停车。
+
+遥控器转发 10 Hz 位姿，Windows 工具可记录、回放和对比 teach/live 两趟，并保留掉包与重连分段。遥控器 D2 对地的常开按钮可在 USB 拔除时发急停。构建双板请用项目编译脚本。[运行命令、仿真结果与独立标定对照](docs/TELEMETRY.zh-CN.md)
 
 报文的精确格式、时序、初始化 API 的阻塞限制以及尚未完成的硬件测试，见
 [BLE 协议与台架检查清单](docs/BLE_PROTOCOL.zh-CN.md)。
 
 | 路径 | 用途 |
 | --- | --- |
-| `firmware/robot/` | 机器人程序；BLE、本地恢复和电机输出闸门的集成点 |
+| `firmware/robot/` | 直连版自主巡线、BLE 看门狗、手势恢复和电机使能 |
 | `firmware/remote/` | 遥控器程序；姿态估计、BLE 和急停请求的集成点 |
 | `libraries/Mech368BLE/` | 可移植的报文编解码、接收器和遥控器端 ACK 跟踪 |
-| `libraries/Mech368Line/` | 红外巡线传感、PD 巡线、弯道/丢线/绕障状态机、运动学和里程计（[docs/LINE_FOLLOWING.zh-CN.md](docs/LINE_FOLLOWING.zh-CN.md)）；已通过仿真测试，尚未接入机器人固件 |
+| `libraries/Mech368Line/` | 可移植的红外巡线、绕障、运动学和里程计 |
+| `libraries/Mech368Tracker/` | 车载固件和独立示例共用的 Nano 传感器与电机驱动代码。[接线与调参](docs/LINE_FOLLOWING.zh-CN.md) |
 | `libraries/Mech368Safety/` | 可移植的状态机，与主机测试共用 |
 | `tests/` | 针对看门狗和急停行为的确定性主机测试 |
 | `.github/workflows/ci.yml` | 相互独立的主机测试、固件模拟和开发板编译任务；不会烧录任何开发板 |
@@ -32,8 +34,8 @@ bash scripts/test-host.sh
 
 # 需要 PATH 中有 Arduino CLI 1.3.1（与 CI 使用的工具链相同）。
 arduino-cli core update-index
-arduino-cli core install arduino:mbed_nano@4.4.1
-arduino-cli lib install ArduinoBLE@1.4.1
+arduino-cli core install arduino:mbed_nano@4.6.0
+arduino-cli lib install ArduinoBLE@2.1.1 Arduino_APDS9960@1.0.4 Arduino_BMI270_BMM150@1.2.4
 bash scripts/compile-firmware.sh
 ```
 
@@ -92,7 +94,7 @@ bash scripts/run-fw-sim.sh --seeds 20 link_stability   # 用 20 个随机种子�
 | `sim/fwsim/hostduino/` | 在电脑上替代 Arduino 核心库、ArduinoBLE、BMI270/BMM150 IMU、APDS-9960、HS300x 的模拟库 |
 | `sim/fwsim/` | 虚拟开发板、无线链路、小车/场地模型、回放查看器、测试场景 |
 | `sim/examples/line_follower/` | 驱动虚拟小车的示例程序（不是课程固件） |
-| `sim/examples/line_tracker/` | `Mech368Line` 的示例程序，使用套件里的红外对管、DRV8833 和编码器（尚未经过安全闸门） |
+| `sim/examples/line_tracker/` | 独立巡线示例。运行 `robot_track_cones` 可同时测试车载和遥控固件。 |
 
 ## 软件在环（SIL）模拟器
 

@@ -38,6 +38,7 @@ done
 
 cxx="${CXX:-c++}"
 build=build/fwsim-build
+if [ -n "${FWSIM_DRIVE_PROFILE:-}" ]; then build=build/fwsim-calibrated-build; fi
 gen="$build/gen"   # three levels below the repository root (see ../../../ below)
 rm -rf "$gen"
 mkdir -p "$gen" "$build/obj" "$out"
@@ -47,6 +48,10 @@ mkdir -p "$gen" "$build/obj" "$out"
 includes=(-I sim/fwsim/hostduino -I sim/fwsim -I "$gen")
 for lib in libraries/*/src; do includes+=(-I "$lib"); done
 std=(-std=c++17 -O1 -g)
+if [ -n "${FWSIM_DRIVE_PROFILE:-}" ]; then
+  cp -- "$FWSIM_DRIVE_PROFILE" "$gen/MeasuredDrive.h"
+  std+=('-DMECH368_CALIBRATION_HEADER="MeasuredDrive.h"')
+fi
 # Extra compiler/linker flags, e.g. CXXFLAGS="-fsanitize=address,undefined".
 read -r -a user_flags <<< "${CXXFLAGS:-}"
 std+=(${user_flags[@]+"${user_flags[@]}"})
@@ -84,7 +89,7 @@ compile() {  # source, object, extra flags...
   local src="$1" obj="$2"; shift 2
   "$cxx" "${std[@]}" "${includes[@]}" "$@" -c "$src" -o "$obj"
 }
-for src in sim/fwsim/*.cpp sim/fwsim/scenarios/*.cpp; do
+for src in sim/fwsim/*.cpp sim/fwsim/scenarios/*.cpp libraries/*/src/*.cpp; do
   obj="$build/obj/$(basename "${src%.cpp}").o"
   compile "$src" "$obj" -Wall -Wextra -Werror -pedantic
   objects+=("$obj")

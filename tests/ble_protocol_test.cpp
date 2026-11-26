@@ -16,9 +16,9 @@ static bool deliver(Receiver& r, const Frame& f, uint32_t now) {
   uint8_t bytes[kFrameSize]; assert(encode(f, bytes, sizeof(bytes)));
   return r.receive(bytes, sizeof(bytes), now);
 }
-static bool status(RemoteLink& link, Frame f, uint32_t now) {
+static bool status(RemoteLink& link, Frame f, uint32_t now, bool* stopAcknowledged = nullptr) {
   uint8_t bytes[kFrameSize]; assert(encode(f, bytes, sizeof(bytes)));
-  return link.status(bytes, sizeof(bytes), now);
+  return link.status(bytes, sizeof(bytes), now, stopAcknowledged);
 }
 static void codec() {
   const uint8_t check[] = "123456789";
@@ -121,9 +121,12 @@ static void exchangeAndLoss() {
   robot.disconnect(1501); remote.reset(); robot.connect(78,1502);
   assert(!robot.allowed(1502));
   assert(status(remote,robot.status(1502),1502));
-  Frame stop=remote.command(true); remote.sent();
+  Frame stop=remote.command(true); remote.sent(true);
+  bool stopAcknowledged = true;
+  assert(status(remote, robot.status(1502), 1502, &stopAcknowledged) && !stopAcknowledged);
   assert(deliver(robot,stop,1503));
-  assert(status(remote,robot.status(1503),1504));
+  assert(status(remote,robot.status(1503),1504,&stopAcknowledged) && stopAcknowledged);
+  assert(status(remote,robot.status(1503),1505,&stopAcknowledged) && !stopAcknowledged);
   assert(remote.healthy(1504)); assert(!robot.allowed(1504));
   assert(robot.status(1504).linear & EstopLatched);
   // Remote ACK timer remains correct through millis rollover.

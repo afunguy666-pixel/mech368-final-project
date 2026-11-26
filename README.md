@@ -2,23 +2,29 @@
 
 [中文版 / Chinese](README.zh-CN.md)
 
-Development scaffold for two Arduino Nano 33 BLE Sense Rev2 boards: one on the
-robot, one in the handheld remote. Phase 1 adds BLE command/status transport,
-portable packet validation and integration with the existing motion-permission
-state machine. Remote traffic is zero-speed heartbeat or a serial-triggered
-E-stop. All actual motor outputs remain absent/disabled; no driver pins assumed.
-This is not a working robot, a demonstrated safety system, or a submission-ready project.
+The direct-wired car uses four reflectance sensors on A0–A3, two LM393 obstacle
+inputs and a DRV8833. Two Nano 33 BLE Sense Rev2 boards run `firmware/robot`
+and `firmware/remote`. The remote sends heartbeats and accepts `e` over USB
+serial to request an E-stop. With a fresh link, swipe UP on the car to calibrate
+and start. After an E-stop, any new swipe on the car clears the latch. Wait for
+a fresh heartbeat and swipe UP to drive. DOWN stops active navigation locally.
+
+The remote forwards 10 Hz pose telemetry to a receive-only Windows recorder. An
+optional normally-open handheld stop button connects D2 to ground. Build the
+paired sketches with the project compile script for credit-aware BLE writes.
+[Recorder, teach/live examples and bench results (Chinese)](docs/TELEMETRY.zh-CN.md)
 
 See [BLE protocol and bench checklist](docs/BLE_PROTOCOL.md) for the exact wire
 format, timing, setup API blocking limitations and unperformed hardware tests.
 
 | Path | Purpose |
 | --- | --- |
-| `firmware/robot/` | Robot sketch; integration point for BLE, local recovery, and motor gating |
+| `firmware/robot/` | Direct-wired autonomous car, BLE watchdog, local recovery and motor enable |
 | `firmware/remote/` | Remote sketch; integration point for pose estimation, BLE, and the E-stop request |
 | `libraries/Mech368BLE/` | Portable packet codec, receiver and remote ACK tracking |
 | `libraries/Mech368Safety/` | Portable state machine shared with the host test |
-| `libraries/Mech368Line/` | IR line sensing, PD line follower, corner/lost-line/detour state machine, kinematics and odometry ([docs/LINE_FOLLOWING.md](docs/LINE_FOLLOWING.md)); simulation-tested, not yet in the robot firmware |
+| `libraries/Mech368Line/` | Portable IR sensing, navigation, kinematics and odometry |
+| `libraries/Mech368Tracker/` | Nano sensor and motor adapter shared by the car and standalone example. [Wiring and tuning](docs/LINE_FOLLOWING.md) |
 | `tests/` | Deterministic host assertions for watchdog and E-stop behavior |
 | `.github/workflows/ci.yml` | Independent host-test, firmware-simulator and board-compile jobs; no uploads to boards |
 
@@ -31,8 +37,8 @@ bash scripts/test-host.sh
 
 # Requires Arduino CLI 1.3.1 on PATH (same toolchain CI uses).
 arduino-cli core update-index
-arduino-cli core install arduino:mbed_nano@4.4.1
-arduino-cli lib install ArduinoBLE@1.4.1
+arduino-cli core install arduino:mbed_nano@4.6.0
+arduino-cli lib install ArduinoBLE@2.1.1 Arduino_APDS9960@1.0.4 Arduino_BMI270_BMM150@1.2.4
 bash scripts/compile-firmware.sh
 ```
 
@@ -98,7 +104,7 @@ and the current findings on the Phase 1 link timing.
 | `sim/fwsim/hostduino/` | Host stand-ins for Arduino core, ArduinoBLE, BMI270/BMM150 IMU, APDS-9960, HS300x |
 | `sim/fwsim/` | Virtual boards, radio, vehicle/world models, replay viewer, scenarios |
 | `sim/examples/line_follower/` | Demo sketch (not course firmware) driving the virtual vehicle |
-| `sim/examples/line_tracker/` | Example sketch for `Mech368Line` with the kit's IR pairs, a DRV8833 and encoders (not yet behind the safety gate) |
+| `sim/examples/line_tracker/` | Standalone navigation example. Use `robot_track_cones` to exercise both course sketches together. |
 
 ## Software-in-the-loop (SIL) simulator
 
