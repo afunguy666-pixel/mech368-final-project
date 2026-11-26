@@ -1,14 +1,13 @@
-# Virtual robot for sim/examples/line_tracker. Geometry from the team's
-# SolidWorks assembly (2026-11-26): chassis disc + front sensor frame, 65 mm
-# wheels at the rear, ball caster at the front, sensors on the front frame.
-# Motor, sensor and battery numbers are still PLACEHOLDERS: replace them with
-# bench measurements.
-# Chassis frame: x forward, y to the left, metres, origin at the wheel axle
-# midpoint (CAD chassis origin is 15.25 mm ahead of the axle).
-track_width 0.092         # wheel centres +-46 mm (CAD)
-wheel_radius 0.0325       # 65 mm wheels (CAD)
-body_radius 0.075         # 150 mm handout cylinder (CAD envelope 148 mm) ...
-body_offset 0.01525       # ... centred on the CAD chassis origin, 15.25 mm ahead of the axle
+# Default SolidWorks car assembly with the line clamp, obstacle bracket and both retainers.
+# Floor frame: x forward, y left, metres from the drive axle midpoint.
+# Motor, battery and optical response parameters are provisional.
+track_width 0.092
+wheel_radius 0.0325
+nose_down_deg 0           # 14.9 mm spacer; caster and wheels coplanar within 0.01 mm
+body_radius 0.075         # course gauge; projected CAD diameter about this centre is 149.6 mm
+body_offset 0.01525
+# Ground-facing surfaces projected onto the track, front to the right.
+body_plan ir_tracker_underside.png -0.050 -0.056 0.086 0.056
 motor_max_speed 30        # wheel rad/s at full duty (assumed, ~290 rpm loaded)
 motor_time_constant 0.08
 motor_deadband 0.08
@@ -20,16 +19,18 @@ motor right in_in in1=D6 in2=D7 sleep=D8
 # channels = 3 pulses on channel A per motor revolution, x100 gearbox.
 encoder left  a=D2 b=D3 ppr=300
 encoder right a=D9 b=D10 ppr=300
-# Line array (CAD sketch): 4 sensors at y = -30, -10, +10, +30 mm on the
-# front frame, 2 mm behind its front edge = 78.25 mm ahead of the axle.
+# Each fore-aft pair tilts inwards 21.8 degrees and samples one shared floor spot.
+# Spots are 75.75 mm ahead of the axle. Clamp underside 5.5 mm, nominal lens clearance 5.0 mm.
 # Common-emitter wiring with a pull-up to 3.3 V: black (less reflected IR)
 # reads high. NEVER pull these up to 5 V: Nano 33 BLE pins are 3.3 V only.
-line_sensor r_out pin=A0 x=0.07825 y=-0.030 on=2.9 off=0.5 spot=0.004
-line_sensor r_in  pin=A1 x=0.07825 y=-0.010 on=2.9 off=0.5 spot=0.004
-line_sensor l_in  pin=A2 x=0.07825 y=0.010  on=2.9 off=0.5 spot=0.004
-line_sensor l_out pin=A3 x=0.07825 y=0.030  on=2.9 off=0.5 spot=0.004
-# Obstacle IR pairs (CAD sketch): y = +-20 mm on the same line, toed out 10
-# degrees, through an LM393 (pull-up to 3.3 V): output LOW within range.
+line_sensor r_out pin=A0 x=0.07575 y=-0.030 on=2.9 off=0.5 spot=0.004
+line_sensor r_in  pin=A1 x=0.07575 y=-0.010 on=2.9 off=0.5 spot=0.004
+line_sensor l_in  pin=A2 x=0.07575 y=0.010  on=2.9 off=0.5 spot=0.004
+line_sensor l_out pin=A3 x=0.07575 y=0.030  on=2.9 off=0.5 spot=0.004
+# CAD lens origins are projected onto the floor. The emitters sit at 28.25 mm, receivers at 21.75 mm.
+# Shoulder to front opening: |y| increases from 19.262 to 20.494 mm. Left is +10 deg, right -10 deg.
+# Range and field of view below are optical model inputs.
+# LM393 open-collector outputs with 3.3 V pull-ups read LOW within range.
 ir_proximity front_left  pin=D12 x=0.07825 y=0.020  yaw_deg=10  range=0.08 fov_deg=20 on_level=0
 ir_proximity front_right pin=D11 x=0.07825 y=-0.020 yaw_deg=-10 range=0.08 fov_deg=20 on_level=0
 battery pin=A7 divider=3.0 volts=7.2 drain_per_min=0

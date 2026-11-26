@@ -99,7 +99,7 @@ class Receiver {
     safety_.update(now, connected_, Packet::None, localGesture);
     if (!safety_.motionAllowed(now)) linear_ = angular_ = 0;
   }
-  bool receive(const uint8_t* bytes, size_t n, uint32_t now) {
+  bool receive(const uint8_t* bytes, size_t n, uint32_t now, Type* acceptedType = nullptr) {
     tick(now);
     Frame f;
     if (!connected_ || !decode(bytes, n, f) || f.type == Type::Status ||
@@ -110,17 +110,19 @@ class Receiver {
     linear_ = safety_.motionAllowed(now) ? f.linear : 0;
     angular_ = safety_.motionAllowed(now) ? f.angular : 0;
     rotate(now); // a challenge may authorize only one accepted command
+    if (acceptedType) *acceptedType = f.type;
     return true;
   }
-  Frame status(uint32_t now) const {
+  Frame status(uint32_t now, bool outputsEnabled = false) const {
     Frame f; f.type = Type::Status; f.session = session_; f.challenge = challenge_;
-    f.sequence = sequence_; f.linear = OutputsDisabled;
+    f.sequence = sequence_; f.linear = outputsEnabled ? 0 : OutputsDisabled;
     if (hasSequence_) f.linear |= AckValid;
     if (safety_.emergencyStopLatched()) f.linear |= EstopLatched;
     if (safety_.motionAllowed(now)) f.linear |= MotionPermitted;
     return f;
   }
   bool allowed(uint32_t now) const { return safety_.motionAllowed(now); }
+  bool estopLatched() const { return safety_.emergencyStopLatched(); }
   int16_t linear(uint32_t now) const { return allowed(now) ? linear_ : 0; }
   int16_t angular(uint32_t now) const { return allowed(now) ? angular_ : 0; }
  private:
@@ -136,7 +138,8 @@ class Receiver {
 class RemoteLink {
  public:
   void reset() { *this = RemoteLink(); }
-  bool status(const uint8_t* bytes, size_t n, uint32_t now) {
+  bool status(const uint8_t* bytes, size_t n, uint32_t now, bool* stopAcknowledged = nullptr) {
+    if (stopAcknowledged) *stopAcknowledged = false;
     Frame f;
     if (!decode(bytes, n, f) || f.type != Type::Status) return false;
     if (session_ && session_ != f.session) return false;
@@ -146,6 +149,7 @@ class RemoteLink {
     if ((f.linear & AckValid) && sent_ && f.sequence == sentSequence_ &&
         (!ack_ || newer(f.sequence, ackSequence_))) {
       ack_ = true; ackSequence_ = f.sequence; ackAt_ = now;
+      if (stopAcknowledged) *stopAcknowledged = sentStop_ && (f.linear & EstopLatched);
     }
     return true;
   }
@@ -155,7 +159,7 @@ class RemoteLink {
     // Zero-motion bench heartbeat only. IMU mapping is deliberately not implemented.
     return f;
   }
-  void sent() { sent_ = true; sentSequence_ = nextSequence_++; }
+  void sent(bool stop = false) { sent_ = true; sentStop_ = stop; sentSequence_ = nextSequence_++; }
   bool ready() const { return session_ != 0; }
   bool healthy(uint32_t now) const {
     return ack_ && static_cast<uint32_t>(now - ackAt_) < MotionSafety::kTimeoutMs;
@@ -163,7 +167,7 @@ class RemoteLink {
  private:
   uint32_t session_ = 0, challenge_ = 0, ackAt_ = 0;
   uint16_t nextSequence_ = 0, sentSequence_ = 0, ackSequence_ = 0;
-  bool sent_ = false, ack_ = false;
+  bool sent_ = false, sentStop_ = false, ack_ = false;
 };
 } // namespace ble
 } // namespace mech368

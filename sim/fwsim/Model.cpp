@@ -2,7 +2,9 @@
 #include <Arduino_APDS9960.h>
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <sstream>
 
@@ -279,7 +281,21 @@ VehicleConfig VehicleConfig::load(const std::string& path) {
     else if (cmd == "wheel_radius") v.wheelRadius = st.num(1);
     else if (cmd == "body_radius") v.bodyRadius = st.num(1);
     else if (cmd == "body_offset") v.bodyOffset = st.num(1);
-    else if (cmd == "motor_max_speed") v.maxWheelSpeed = st.num(1);
+    else if (cmd == "nose_down_deg") {
+      const double deg = st.num(1);
+      if (std::abs(deg) >= 90) st.fail("nose_down_deg must be between -90 and 90 degrees");
+      v.noseDown = deg * kPi / 180.0;
+    } else if (cmd == "body_plan") {
+      if (st.words.size() != 6) st.fail("body_plan needs PNG xmin ymin xmax ymax (m)");
+      v.plan.lo = Vec2{st.num(2), st.num(3)};
+      v.plan.hi = Vec2{st.num(4), st.num(5)};
+      if (v.plan.hi.x <= v.plan.lo.x || v.plan.hi.y <= v.plan.lo.y) st.fail("empty body_plan bounds");
+      const auto imagePath = std::filesystem::path(path).parent_path() / st.words[1];
+      std::ifstream image(imagePath, std::ios::binary);
+      if (!image) st.fail("cannot open body_plan " + imagePath.string());
+      v.plan.png.assign(std::istreambuf_iterator<char>(image), std::istreambuf_iterator<char>());
+      if (v.plan.png.compare(0, 8, "\x89PNG\r\n\x1a\n") != 0) st.fail("body_plan requires a PNG");
+    } else if (cmd == "motor_max_speed") v.maxWheelSpeed = st.num(1);
     else if (cmd == "motor_time_constant") v.timeConstant = st.num(1);
     else if (cmd == "motor_deadband") v.deadband = st.num(1);
     else if (cmd == "nominal_voltage") v.nominalVolts = st.num(1);
@@ -372,6 +388,10 @@ VehicleConfig VehicleConfig::load(const std::string& path) {
   }
   if (v.trackWidth <= 0 || v.wheelRadius <= 0 || v.maxWheelSpeed <= 0 || v.timeConstant <= 0)
     throw std::runtime_error(path + ": geometry and motor parameters must be positive");
+  // A line probe aimed along chassis -z hits the floor at this x regardless
+  // of its height along that ray. Obstacle beam origins are specified in plan.
+  for (auto& sensor : v.lineSensors)
+    sensor.x = (sensor.x - v.wheelRadius * std::sin(v.noseDown)) / std::cos(v.noseDown);
   return v;
 }
 
@@ -648,16 +668,21 @@ bool Vehicle::temperature(Board&, double& celsius) {
 
 ImuSample Vehicle::imu(Board&) {
   ImuSample s;
-  s.ax = static_cast<float>(accel / 9.80665);
+  // Resolve the level-world acceleration, yaw and magnetic field in the
+  // chassis axes of a board mounted parallel to the plate.
+  const double c = std::cos(cfg.noseDown), p = std::sin(cfg.noseDown);
+  const double forwardG = accel / 9.80665, yawDps = yawRate * 180.0 / kPi;
+  s.ax = static_cast<float>(c * forwardG - p);
   s.ay = static_cast<float>(speed * yawRate / 9.80665);
-  s.az = 1.0f;
-  s.gx = static_cast<float>(cfg.gyroNoiseDps * gauss(rng));
+  s.az = static_cast<float>(p * forwardG + c);
+  s.gx = static_cast<float>(-p * yawDps + cfg.gyroNoiseDps * gauss(rng));
   s.gy = static_cast<float>(cfg.gyroNoiseDps * gauss(rng));
-  s.gz = static_cast<float>(yawRate * 180.0 / kPi + cfg.gyroBiasDps + cfg.gyroNoiseDps * gauss(rng));
+  s.gz = static_cast<float>(c * yawDps + cfg.gyroBiasDps + cfg.gyroNoiseDps * gauss(rng));
   // Horizontal field towards world +y, 20 uT; vertical component down, 40 uT.
-  s.mx = static_cast<float>(20.0 * std::sin(pose.yaw));
+  const double forwardField = 20.0 * std::sin(pose.yaw);
+  s.mx = static_cast<float>(c * forwardField + p * 40.0);
   s.my = static_cast<float>(20.0 * std::cos(pose.yaw));
-  s.mz = -40.0f;
+  s.mz = static_cast<float>(p * forwardField - c * 40.0);
   return s;
 }
 

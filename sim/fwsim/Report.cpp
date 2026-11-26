@@ -56,6 +56,20 @@ std::string column(const std::vector<Sample>& samples, F f, int digits = 4) {
   return out + "]";
 }
 std::string pt(Vec2 p) { return "[" + num(p.x) + "," + num(p.y) + "]"; }
+std::string pngDataUrl(const std::string& bytes) {
+  static const char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  std::string out = "data:image/png;base64,";
+  for (size_t i = 0; i < bytes.size(); i += 3) {
+    const unsigned a = static_cast<unsigned char>(bytes[i]);
+    const unsigned b = i + 1 < bytes.size() ? static_cast<unsigned char>(bytes[i + 1]) : 0;
+    const unsigned c = i + 2 < bytes.size() ? static_cast<unsigned char>(bytes[i + 2]) : 0;
+    out += alphabet[a >> 2];
+    out += alphabet[((a & 3) << 4) | (b >> 4)];
+    out += i + 1 < bytes.size() ? alphabet[((b & 15) << 2) | (c >> 6)] : '=';
+    out += i + 2 < bytes.size() ? alphabet[c & 63] : '=';
+  }
+  return out;
+}
 }  // namespace
 
 void Simulation::writeReport(const std::string& dir, const std::string& name,
@@ -173,14 +187,19 @@ void Simulation::writeReport(const std::string& dir, const std::string& name,
       << num(h.delta) << "," << json(h.name) << "]";
   }
   d << "]},\"vehicle\":{\"track\":" << num(vc.trackWidth) << ",\"wheel\":" << num(vc.wheelRadius)
-    << ",\"body\":" << num(vc.bodyRadius) << ",\"bodyX\":" << num(vc.bodyOffset) << ",\"source\":" << json(vc.source) << ",\"line\":[";
+    << ",\"body\":" << num(vc.bodyRadius) << ",\"bodyX\":" << num(vc.bodyOffset, 6)
+    << ",\"noseDown\":" << num(vc.noseDown, 6) << ",\"source\":" << json(vc.source);
+  if (!vc.plan.png.empty())
+    d << ",\"plan\":{\"image\":" << json(pngDataUrl(vc.plan.png)) << ",\"lo\":" << pt(vc.plan.lo)
+      << ",\"hi\":" << pt(vc.plan.hi) << "}";
+  d << ",\"line\":[";
   for (size_t i = 0; i < vc.lineSensors.size(); ++i)
-    d << (i ? "," : "") << "[" << num(vc.lineSensors[i].x) << "," << num(vc.lineSensors[i].y) << ","
+    d << (i ? "," : "") << "[" << num(vc.lineSensors[i].x, 6) << "," << num(vc.lineSensors[i].y) << ","
       << json(vc.lineSensors[i].name) << "]";
   d << "],\"distance\":[";
   for (size_t i = 0; i < vc.distance.size(); ++i)
-    d << (i ? "," : "") << "[" << num(vc.distance[i].x) << "," << num(vc.distance[i].y) << ","
-      << num(vc.distance[i].yaw) << "," << num(vc.distance[i].maxRange) << "," << json(vc.distance[i].name) << "]";
+    d << (i ? "," : "") << "[" << num(vc.distance[i].x, 6) << "," << num(vc.distance[i].y) << ","
+      << num(vc.distance[i].yaw, 6) << "," << num(vc.distance[i].maxRange) << "," << json(vc.distance[i].name) << "]";
   d << "]}";
   const auto& S = samples_;
   d << ",\"samples\":{\"t\":" << column(S, [](const Sample& s) { return s.t / 1000.0; }, 1)

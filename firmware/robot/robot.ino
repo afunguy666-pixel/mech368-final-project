@@ -1,9 +1,15 @@
 #include <Arduino.h>
 #include <ArduinoBLE.h>
+#include <Arduino_APDS9960.h>
+#include <DirectLineTracker.h>
 #include <Mech368Protocol.h>
 
 namespace wire = mech368::ble;
 wire::Receiver receiver;
+bool motionPermitted() { return receiver.allowed(millis()); }
+mech368::DirectLineTracker tracker(motionPermitted);
+void leftEncoderIsr() { tracker.leftEdge(); }
+void rightEncoderIsr() { tracker.rightEdge(); }
 BLEService controlService(wire::kService);
 // Extra byte detects oversized writes even if ArduinoBLE truncates to capacity.
 // Variable length preserves short writes so they can also be rejected.
@@ -13,17 +19,19 @@ BLECharacteristic statusCharacteristic(wire::kStatus, BLERead | BLENotify,
                                         wire::kFrameSize);
 bool bleReady = false;
 bool linkUp = false;
+bool stopSinceGestureCheck = false;
 uint32_t lastStatusAt = 0;
 uint32_t sessionCounter = 0;
 
 void publishStatus(uint32_t now) {
   uint8_t bytes[wire::kFrameSize];
-  if (wire::encode(receiver.status(now), bytes, sizeof(bytes)))
+  if (wire::encode(receiver.status(now, tracker.outputsEnabled()), bytes, sizeof(bytes)))
     statusCharacteristic.writeValue(bytes, sizeof(bytes));
 }
 
 void onConnect(BLEDevice central) {
   (void)central;
+  tracker.stop();
   linkUp = true;
   // Connection-scoped discriminator, NOT authentication or a persistent nonce.
   sessionCounter += static_cast<uint32_t>(micros()) | 1U;
@@ -34,6 +42,7 @@ void onConnect(BLEDevice central) {
 
 void onDisconnect(BLEDevice central) {
   (void)central;
+  tracker.stop();
   linkUp = false;
   receiver.disconnect(millis());
   // ArduinoBLE resumes peripheral advertising after a disconnect.
@@ -47,12 +56,18 @@ void onCommand(BLEDevice central, BLECharacteristic characteristic) {
   if (characteristic.readValue(bytes, sizeof(bytes)) != length) return;
   // Handle each write event immediately: a following motion frame cannot
   // overwrite an E-stop before the loop sees it. No BLE I/O inside this callback.
-  receiver.receive(bytes, sizeof(bytes), millis());
+  const uint32_t now = millis();
+  // A newly arrived heartbeat must not hide an expiry during BLE.poll().
+  if (!receiver.allowed(now)) tracker.stop();
+  wire::Type accepted;
+  if (receiver.receive(bytes, sizeof(bytes), now, &accepted) && accepted == wire::Type::Stop) {
+    tracker.stop();
+    stopSinceGestureCheck = true;
+  }
 }
 
 void setup() {
-  // TODO: Verify driver, safe electrical defaults and board wiring before
-  // implementing any motor- or battery-related I/O.
+  tracker.begin(leftEncoderIsr, rightEncoderIsr);
   pinMode(LED_BUILTIN, OUTPUT);
   bleReady = BLE.begin();
   if (!bleReady) return;
@@ -66,22 +81,25 @@ void setup() {
   commandCharacteristic.setEventHandler(BLEWritten, onCommand);
   BLE.advertise();
 }
-//setup
-//test
 
 void loop() {
-  receiver.tick(millis());
+  if (!motionPermitted()) tracker.stop();
   if (bleReady) BLE.poll();
+  if (!motionPermitted()) tracker.stop();
+  const int sensedGesture = tracker.readGesture();
+  const int gesture = stopSinceGestureCheck ? GESTURE_NONE : sensedGesture;
+  stopSinceGestureCheck = false;
   const uint32_t now = millis();
-  // TODO: supply a NEW local APDS-9960 gesture edge. No remote unlock exists.
-  receiver.tick(now, false);
+  const bool wasLatched = receiver.estopLatched();
+  receiver.tick(now, wasLatched && gesture != GESTURE_NONE);
+  if (gesture == GESTURE_DOWN) tracker.stop();
+  // Any recovery gesture is consumed. A later UP on a fresh link starts.
+  if (gesture == GESTURE_UP && !wasLatched) tracker.start();
+  tracker.update();
   if (linkUp && static_cast<uint32_t>(now - lastStatusAt) >= wire::kSendMs) {
     lastStatusAt = now;
-    publishStatus(now);
+    publishStatus(millis());
   }
   const bool fault = !bleReady || !linkUp || !receiver.allowed(now);
   digitalWrite(LED_BUILTIN, fault ? ((now / 125U) % 2U ? HIGH : LOW) : HIGH);
-  // ALL actual motor outputs remain absent/disabled, even when allowed() is true.
-  // Future motor adapter must use receiver.linear(now)/angular(now) behind the
-  // same safety gate after wiring, electrical defaults and timing are verified.
 }
