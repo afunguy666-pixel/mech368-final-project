@@ -37,9 +37,10 @@ void loop() {
   const uint32_t beforePoll = millis();
   digitalWrite(LED_BUILTIN, bleReady && link.healthy(beforePoll) ? HIGH :
                ((beforePoll / 125U) % 2U ? HIGH : LOW));
-  // Bench-only E-stop input. Sticky until remote reset; no motor pin assumed.
-  // TODO: replace/add an explicitly verified physical input and IMU mapping.
-  if (Serial.available() > 0 && Serial.read() == 'e') stopRequested = true;
+  // Keep requesting a stop across packet loss/reconnect until the robot ACKs
+  // that specific stop with its latch set. Only the robot can clear the latch.
+  const bool newStop = Serial.available() > 0 && Serial.read() == 'e';
+  if (newStop) stopRequested = true;
   if (!bleReady) return;
   BLE.poll();
   uint32_t now = millis();
@@ -81,12 +82,14 @@ void loop() {
     case LinkPhase::Active: {
       if (!robot.connected()) { retry(now); break; }
       bool freshStatus = false;
+      bool stopAcknowledged = false;
       if (statusCharacteristic.valueUpdated()) {
         uint8_t bytes[wire::kFrameSize];
         if (statusCharacteristic.valueLength() == static_cast<int>(sizeof(bytes)) &&
             statusCharacteristic.readValue(bytes, sizeof(bytes)) == sizeof(bytes))
-          freshStatus = link.status(bytes, sizeof(bytes), millis());
+          freshStatus = link.status(bytes, sizeof(bytes), millis(), &stopAcknowledged);
       }
+      if (stopAcknowledged && !newStop) stopRequested = false;
       now = millis(); // status processing may have advanced the local clock
       // 450 ms without a progressing application ACK signals a fault. Allow
       // startup grace, then reconnect; duplicate status never extends health.
@@ -100,7 +103,7 @@ void loop() {
         lastSendAt = now;
         uint8_t bytes[wire::kFrameSize];
         if (wire::encode(link.command(stopRequested), bytes, sizeof(bytes)) &&
-            commandCharacteristic.writeValue(bytes, sizeof(bytes), false)) link.sent();
+            commandCharacteristic.writeValue(bytes, sizeof(bytes), false)) link.sent(stopRequested);
         else retry(millis());
       }
       break;

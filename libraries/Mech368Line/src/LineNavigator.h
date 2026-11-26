@@ -196,6 +196,7 @@ class LineNavigator {
 
   void start(const NavInputs& in) {
     clearCounters();
+    waitWideClear_ = false;
     follower.reset();
     cornerMark_ = obstacleMark_ = in.distance - 1.0f;  // armed
     trackHeading_ = in.heading;
@@ -225,6 +226,13 @@ class LineNavigator {
       case NavState::Follow: return follow(in);
       case NavState::CornerCheck:
         if (startDetour(in)) return Twist();
+        // An off-centre approach can darken the wrong outer sensor just before
+        // the crossing. Give the opposite, debounced branch its own distance
+        // window (e.g. 0111 -> 1111 -> 1110 -> no tape at a right corner).
+        if (wide_ >= cfg.wideSamples && wideSide_ != side_) {
+          side_ = wideSide_;
+          enter(NavState::CornerCheck, in, side_ > 0 ? "possible corner left" : "possible corner right");
+        }
         if (lost_ >= 2) {
           holdHeading_ = in.heading;
           advance_ = cfg.cornerAdvanceAfterLoss;
@@ -232,9 +240,9 @@ class LineNavigator {
           return Twist(cfg.approachSpeed, 0.0f);
         }
         if (travelled(in) >= cfg.cornerConfirm) {
-          // Re-arm as soon as the pattern clears, not after cornerRearm: a
-          // real corner may come right after a false alarm.
-          waitWideClear_ = true;
+          // Suppress only the expired pattern while it is still present. A
+          // different branch may already have its first debounce sample.
+          waitWideClear_ = wide_ > 0 && wideSide_ == side_;
           follower.reset();
           enter(NavState::Follow, in, "not a corner");
           return Twist();

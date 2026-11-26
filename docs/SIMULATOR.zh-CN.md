@@ -60,8 +60,9 @@ bash scripts/run-fw-sim.sh --list
 | 传感器 | 胶带上方的模拟/数字反射式巡线传感器；HC-SR04 式超声波（触发脉冲 + `pulseIn`）；Sharp 式模拟红外测距；经比较器输出的反射式红外避障对管（`ir_proximity`：物体进入 `fov_deg` 波束内的 `range` 距离时数字输出翻转）；比较器输出的巡线传感器也能用 `analogRead` 读（0 V / 3.3 V）；电池分压；由小车运动算出的 IMU 陀螺仪/加速度计/磁力计（带零偏和噪声）；由脚本给出的 APDS 手势和接近度；HS300x 温度取自场地温度场，带一阶滞后、噪声和偏移（假定每次读取阻塞约 10 ms）。遥控器的 IMU 跟随脚本设定的手部倾斜。 |
 | 场地 | `sim/worlds/*.world`：胶带线、椭圆环、方块、圆形障碍、直角或圆角边界墙，以及温度场（`ambient` 加上 `heat` 热点/冷点）。固件链路场景都在 `course.world` 上运行。 |
 
-所有参数都在两个带注释的文本文件里。**其中每个数字都是占位值**，请换成你们的实际接线和台架实测数据：
+车辆文件描述硬件，场地文件描述赛道。
 
+- `sim/vehicles/ir_tracker.vehicle` 和 `ir_tracker_lm393.vehicle` 采用原生整车装配的几何。`nose_down_deg` 设置车头向下的静态角度，用于 IMU 和巡线光轴与地面的交点。避障探头的位置直接用地面坐标表示。可选的 `body_plan PNG xmin ymin xmax ymax` 读取车辆文件旁边的图片并嵌入回放。边界坐标以米为单位，相对轮轴中点，x 向前、y 向左。[车体几何](LINE_FOLLOWING.zh-CN.md#车体几何)
 - `sim/vehicles/example.vehicle`：引脚、电机驱动类型、轮径和轮距、编码器 PPR、传感器位置、电池分压比、陀螺仪零偏。
 - `sim/worlds/course.world`：按课程讲义图 6 描出的期末项目场地（5 cm 黑色赛道、蛇形路线、三个锥桶、圆角场地边界）。
   图上没有尺寸，所以布局按假设的约 2.0 m × 1.5 m 比例绘制。请去 KAIS 1220 量一下真实赛道，再更新坐标。
@@ -148,6 +149,7 @@ FWSIM_SKETCHES=/path/to/remote_v2 bash scripts/run-fw-sim.sh --seeds 10 --sketch
 `sim/examples/line_tracker` 在 `sim/vehicles/ir_tracker.vehicle` 和
 `ir_tracker_lm393.vehicle` 上运行 `libraries/Mech368Line`（标定后的红外阵列、PD 巡线、
 90° 弯道、绕锥桶）。它的 `track_*` 场景见 [LINE_FOLLOWING.zh-CN.md](LINE_FOLLOWING.zh-CN.md)。
+`robot_track_*` 场景在直连车型上运行车载和遥控两份固件，检查整圈绕障、心跳中断时的 D8 电平、标定中断后的重启，以及急停和本地向上手势同时到达时的优先级。
 
 ## 对第一阶段固件的发现（2026-11-21）
 
@@ -161,7 +163,7 @@ FWSIM_SKETCHES=/path/to/remote_v2 bash scripts/run-fw-sim.sh --seeds 10 --sketch
   （约 1.5–2 s 无法控制）。`link_stability` 在 10 个种子下全部失败；
   还有一次急停在请求后 815 ms 才锁存，因为请求正好落在一次这样的重连期间。
   现在 `firmware/remote/remote.ino` 在每收到一条有效状态通知后发送恰好一条指令，
-  与 `docs/BLE_PROTOCOL.md` 的描述一致。修复后，当时的全部 14 个场景在 10 个种子下都通过了（目前共 17 个场景）。
+  与 `docs/BLE_PROTOCOL.md` 的描述一致。修复后，当时的全部 14 个场景在 10 个种子下都通过了。
   这个修复只在模拟中验证过：请在两块真实开发板上确认链路稳定性和急停延迟。
   需要注意的副作用：如果状态通知停了，遥控器也会停止发送（包括急停报文）。
   不过那种情况下它的指令本来就会带着过期的挑战码，而机器人的看门狗会让运动停止。

@@ -84,7 +84,7 @@ compile() {  # source, object, extra flags...
   local src="$1" obj="$2"; shift 2
   "$cxx" "${std[@]}" "${includes[@]}" "$@" -c "$src" -o "$obj"
 }
-for src in sim/fwsim/*.cpp sim/fwsim/scenarios/*.cpp; do
+for src in sim/fwsim/*.cpp sim/fwsim/scenarios/*.cpp libraries/*/src/*.cpp; do
   obj="$build/obj/$(basename "${src%.cpp}").o"
   compile "$src" "$obj" -Wall -Wextra -Werror -pedantic
   objects+=("$obj")

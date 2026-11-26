@@ -60,9 +60,13 @@ For each run you get:
 | Sensors | Analog/digital reflective line sensors over tape, HC-SR04-style ultrasonic (trigger pulse + `pulseIn`), Sharp-style analog IR distance, reflective IR obstacle pairs through a comparator (`ir_proximity`: digital output within `range` over a `fov_deg` beam), comparator line sensors also readable with `analogRead` (0 V / 3.3 V), battery divider, IMU gyro/accelerometer/magnetometer from the vehicle motion (with bias/noise), APDS gestures and proximity from the script, HS300x temperature from the world's temperature field with first-order lag, noise and offset (each read assumed to block ~10 ms). The remote's IMU follows a scripted hand tilt. |
 | Course | `sim/worlds/*.world`: tape lines, ovals, boxes, circles, straight or rounded border walls, and a temperature field (`ambient` plus `heat` hot/cold spots). The firmware link scenarios run on `course.world`. |
 
-All parameters live in two commented text files. **Every number in them is a
-placeholder.** Replace them with your wiring and bench measurements:
+Vehicle files describe the hardware. World files describe the field.
 
+- `sim/vehicles/ir_tracker.vehicle` and `ir_tracker_lm393.vehicle` use the native car assembly.
+  `nose_down_deg` sets the static chassis pitch used for the IMU and the floor intersection of each line probe.
+  Obstacle beam origins are specified in the floor plane. The optional
+  `body_plan PNG xmin ymin xmax ymax` loads a PNG next to the vehicle file and embeds it in the replay.
+  Its bounds are metres from the axle, with x forward and y left. [CAD dimensions](LINE_FOLLOWING.md#robot-geometry)
 - `sim/vehicles/example.vehicle`: pins, motor driver type, wheel and track
   size, encoder PPR, sensor positions, battery divider, gyro bias.
 - `sim/worlds/course.world`: the final-project field traced from Figure 6 of
@@ -159,6 +163,9 @@ how the vehicle file's pins reach ordinary Arduino code.
 PD line following, 90-degree corners, cone detours) on
 `sim/vehicles/ir_tracker.vehicle` and `ir_tracker_lm393.vehicle`. Its
 `track_*` scenarios are described in [LINE_FOLLOWING.md](LINE_FOLLOWING.md).
+The `robot_track_*` scenarios run both course sketches on the direct-wired
+vehicle. They check the full course, the D8 enable signal during lost heartbeats,
+restarting an interrupted calibration, and E-stop priority over a local UP.
 
 ## Findings on the Phase 1 firmware (2026-11-21)
 
@@ -177,7 +184,7 @@ PD line following, 90-degree corners, cone detours) on
   landed during such a reconnect.
   `firmware/remote/remote.ino` now sends exactly one command after each
   valid status notification, as `docs/BLE_PROTOCOL.md` describes. Afterwards
-  all 14 scenarios that existed then passed on 10/10 seeds (17 today). This fix is validated in simulation
+  all 14 scenarios that existed then passed on 10/10 seeds. This fix is validated in simulation
   only: confirm link stability and E-stop latency on the two real boards.
   A side effect to be aware of: if status notifications stop, the remote
   also stops sending (including E-stop frames). Its commands would carry a
