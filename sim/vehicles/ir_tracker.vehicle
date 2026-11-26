@@ -1,0 +1,38 @@
+# Default SolidWorks car assembly with the line clamp, obstacle bracket and both retainers.
+# Floor frame: x forward, y left, metres from the drive axle midpoint.
+# Motor, battery and optical response parameters are provisional.
+track_width 0.092
+wheel_radius 0.0325
+nose_down_deg 0           # 14.9 mm spacer; caster and wheels coplanar within 0.01 mm
+body_radius 0.075         # course gauge; projected CAD diameter about this centre is 149.6 mm
+body_offset 0.01525
+# Ground-facing surfaces projected onto the track, front to the right.
+body_plan ir_tracker_underside.png -0.050 -0.056 0.086 0.056
+motor_max_speed 30        # wheel rad/s at full duty (assumed, ~290 rpm loaded)
+motor_time_constant 0.08
+motor_deadband 0.08
+nominal_voltage 7.2
+# DRV8833 (IN/IN, PWM on the inputs), shared nSLEEP on D8.
+motor left  in_in in1=D4 in2=D5 sleep=D8
+motor right in_in in1=D6 in2=D7 sleep=D8
+# Magnetic encoder: 12 counts/rev of the motor shaft on both edges of both
+# channels = 3 pulses on channel A per motor revolution, x100 gearbox.
+encoder left  a=D2 b=D3 ppr=300
+encoder right a=D9 b=D10 ppr=300
+# Each fore-aft pair tilts inwards 21.8 degrees and samples one shared floor spot.
+# Spots are 75.75 mm ahead of the axle. Clamp underside 5.5 mm, nominal lens clearance 5.0 mm.
+# Common-emitter wiring with a pull-up to 3.3 V: black (less reflected IR)
+# reads high. NEVER pull these up to 5 V: Nano 33 BLE pins are 3.3 V only.
+line_sensor r_out pin=A0 x=0.07575 y=-0.030 on=2.9 off=0.5 spot=0.004
+line_sensor r_in  pin=A1 x=0.07575 y=-0.010 on=2.9 off=0.5 spot=0.004
+line_sensor l_in  pin=A2 x=0.07575 y=0.010  on=2.9 off=0.5 spot=0.004
+line_sensor l_out pin=A3 x=0.07575 y=0.030  on=2.9 off=0.5 spot=0.004
+# CAD lens origins are projected onto the floor. The emitters sit at 28.25 mm, receivers at 21.75 mm.
+# The shoulder and front opening share y = +/-20 mm. Both optical axes face straight ahead.
+# Range and field of view below are optical model inputs.
+# LM393 open-collector outputs with 3.3 V pull-ups read LOW within range.
+ir_proximity front_left  pin=D12 x=0.07825 y=0.020  yaw_deg=0 range=0.08 fov_deg=20 on_level=0
+ir_proximity front_right pin=D11 x=0.07825 y=-0.020 yaw_deg=0 range=0.08 fov_deg=20 on_level=0
+battery pin=A7 divider=3.0 volts=7.2 drain_per_min=0
+gyro bias=0.3 noise=0.05
+temperature tau=2.0 noise=0.05 offset=0

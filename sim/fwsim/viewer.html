@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FWSIM_TITLE · MECH 368 sim replay</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --ink: #1d2433; --muted: #5d6879; --line: #d9dee6;
+  --floor: #fbfbf7; --tape: #1b1b1b; --obstacle: #d98c4a; --wall: #6b7280;
+  --robot: #2563eb; --trail: #2563eb; --ok: #15803d; --bad: #b91c1c; --warn: #b45309;
+  --chip: #eef1f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #11151c; --panel: #181e27; --ink: #e5e9f0; --muted: #98a2b3; --line: #2b3442;
+          --floor: #1d232c; --tape: #e5e7eb; --obstacle: #c9783a; --wall: #9aa3b2;
+          --robot: #60a5fa; --trail: #60a5fa; --ok: #4ade80; --bad: #f87171; --warn: #fbbf24;
+          --chip: #232b37; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+       font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { padding: 14px 16px 8px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; }
+h1 { font-size: 18px; margin: 0; font-weight: 650; }
+.desc { color: var(--muted); flex-basis: 100%; }
+.badge { font-weight: 700; padding: 2px 9px; border-radius: 999px; font-size: 12px; color: #fff; }
+.badge.pass { background: var(--ok); } .badge.fail { background: var(--bad); }
+main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px; padding: 0 16px 16px; }
+@media (max-width: 860px) { main { grid-template-columns: minmax(0, 1fr); } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; min-width: 0; }
+canvas { display: block; width: 100%; }
+#world { aspect-ratio: 3 / 2; border-radius: 6px; background: var(--floor); }
+.controls { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.controls input[type=range] { flex: 1; min-width: 120px; }
+button, select { font: inherit; color: var(--ink); background: var(--chip); border: 1px solid var(--line);
+                 border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+#time { font-variant-numeric: tabular-nums; min-width: 78px; text-align: right; }
+#strip { margin-top: 8px; cursor: crosshair; }
+h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 10px 0 6px; }
+h2:first-child { margin-top: 0; }
+#mapBox h2 { margin-top: 10px; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-variant-numeric: tabular-nums; }
+.kv span:nth-child(odd) { color: var(--muted); }
+.leds { display: flex; gap: 14px; flex-wrap: wrap; }
+.led { display: flex; align-items: center; gap: 6px; }
+.dot { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--line); background: #333; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { padding: 1px 8px; border-radius: 999px; background: var(--chip); color: var(--muted); font-size: 12px; }
+.chip.on { color: #fff; } .chip.on.good { background: var(--ok); } .chip.on.bad { background: var(--bad); }
+.bar { height: 8px; background: var(--chip); border-radius: 4px; position: relative; overflow: hidden; }
+.bar > i { position: absolute; top: 0; bottom: 0; background: var(--robot); }
+.bars { display: grid; grid-template-columns: 70px 1fr 44px; gap: 4px 8px; align-items: center;
+        font-variant-numeric: tabular-nums; font-size: 12px; }
+#cadDetail { margin-top: 8px; }
+#cadDetail summary { color: var(--muted); cursor: pointer; }
+#cadDrawing { position: relative; margin: 8px auto; max-width: 320px; }
+#cadImage { position: absolute; display: block; }
+#cadAxes { position: absolute; inset: 0; width: 100%; height: 100%; }
+#cadAxes line { stroke: var(--warn); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+#cadYaw { display: block; }
+.planSpot { position: absolute; width: 8px; height: 8px; transform: translate(-50%, -50%);
+            border: 1px solid white; border-radius: 50%; background: var(--muted); }
+.planSpot.on { background: var(--bad); }
+#log { font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; max-height: 260px;
+       overflow: auto; margin: 0; padding: 0; list-style: none; }
+#log li { padding: 0 4px; white-space: pre-wrap; word-break: break-word; }
+#log li.future { opacity: .38; }
+#log li.now { background: var(--chip); }
+#log li time { color: var(--muted); margin-right: 6px; }
+.checks li { margin: 2px 0; } .checks { padding-left: 18px; margin: 0; }
+.checks .ok::marker { content: "✓ "; color: var(--ok); } .checks .bad::marker { content: "✗ "; color: var(--bad); }
+.foot { color: var(--muted); font-size: 12px; padding: 0 16px 16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title"></h1><span id="badge" class="badge"></span>
+  <span id="sk" class="chip"></span>
+  <div class="desc" id="desc"></div>
+</header>
+<main>
+  <section>
+    <div class="card">
+      <canvas id="world"></canvas>
+      <div class="controls">
+        <button id="play" aria-label="Play or pause">▶</button>
+        <select id="speed" aria-label="Playback speed">
+          <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option><option value="2">2×</option>
+          <option value="4">4×</option><option value="8">8×</option>
+        </select>
+        <input id="seek" type="range" min="0" value="0" step="1" aria-label="Time">
+        <span id="time"></span>
+      </div>
+      <canvas id="strip" height="200"></canvas>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h2>Events and serial output</h2>
+      <ul id="log"></ul>
+    </div>
+  </section>
+  <aside class="card">
+    <h2>Indicators</h2>
+    <div class="leds">
+      <div class="led"><div class="dot" id="ledRobot"></div>robot LED</div>
+      <div class="led"><div class="dot" id="ledRgb"></div>robot RGB</div>
+      <div class="led"><div class="dot" id="ledRemote"></div>remote LED</div>
+    </div>
+    <h2>Link / last status seen by remote</h2>
+    <div class="chips" id="chips"></div>
+    <h2>Motion</h2>
+    <div class="kv" id="kv"></div>
+    <h2>Motor command / wheel speed</h2>
+    <div class="bars" id="bars"></div>
+    <h2 id="sensH">Sensors</h2>
+    <div class="bars" id="sensors"></div>
+    <details id="cadDetail" hidden>
+      <summary>CAD underside · front →</summary>
+        <div id="cadDrawing"><img id="cadImage" alt="Ground-facing vehicle parts">
+          <svg id="cadAxes" role="img" aria-label="Forward sensor axes"></svg>
+        </div>
+      <small id="cadPitch"></small>
+        <small id="cadYaw"></small>
+    </details>
+    <div id="mapBox" hidden>
+      <h2>Temperature map</h2>
+      <label><input type="checkbox" id="showHeat" checked> true field</label>
+      <label><input type="checkbox" id="showMap" checked> logged points</label>
+      <div class="kv" id="mapKv" style="margin-top:6px"></div>
+    </div>
+    <h2>Checks</h2>
+    <ul class="checks" id="checks"></ul>
+  </aside>
+</main>
+<div class="foot" id="foot"></div>
+<script>
+const DATA = /*FWSIM_DATA*/null;
+const S = DATA.samples, N = S.t.length, W = DATA.world, V = DATA.vehicle;
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let idx = 0, playing = false, speed = 1, lastFrame = 0, simTime = 0;
+
+$('title').textContent = DATA.name;
+$('badge').textContent = DATA.passed ? 'PASS' : 'FAIL';
+$('badge').className = 'badge ' + (DATA.passed ? 'pass' : 'fail');
+$('desc').textContent = DATA.description;
+$('sk').textContent = 'robot: ' + (DATA.sketches.robot || '—') + ' · remote: ' + (DATA.sketches.remote || '—');
+$('foot').textContent = 'World: ' + W.source + ' · Vehicle: ' + V.source +
+  ' · Virtual time; models are assumptions, not bench measurements.';
+$('seek').max = Math.max(0, N - 1);
+for (const [ok, text, t] of DATA.checks) {
+  const li = document.createElement('li'); li.className = ok ? 'ok' : 'bad';
+  li.textContent = text + '  (t=' + (t / 1000).toFixed(2) + ' s)'; $('checks').appendChild(li);
+}
+const logItems = DATA.log.map(([t, text]) => {
+  const li = document.createElement('li');
+  const tm = document.createElement('time'); tm.textContent = (t / 1000).toFixed(3);
+  li.append(tm, text); $('log').appendChild(li); return [t, li];
+});
+if (!V.line.length && !V.distance.length) $('sensH').style.display = 'none';
+const planImage = $('cadImage'), planSpots = [];
+if (V.plan) {
+  const {lo, hi} = V.plan;
+  const axes = V.distance.map(([x, y, yaw, range, name]) => ({
+    x, y, yaw, name, endX: x + range * Math.cos(yaw), endY: y + range * Math.sin(yaw)
+  }));
+  const left = Math.min(lo[0], ...axes.map(a => a.endX));
+  const right = Math.max(hi[0], ...axes.map(a => a.endX));
+  const bottom = Math.min(lo[1], ...axes.map(a => a.endY));
+  const top = Math.max(hi[1], ...axes.map(a => a.endY));
+  const width = right - left, height = top - bottom;
+  const xPercent = x => (100 * (x - left) / width) + '%';
+  const yPercent = y => (100 * (top - y) / height) + '%';
+  $('cadDrawing').style.aspectRatio = width / height;
+  planImage.style.left = xPercent(lo[0]);
+  planImage.style.top = yPercent(hi[1]);
+  planImage.style.width = (100 * (hi[0] - lo[0]) / width) + '%';
+  const svg = $('cadAxes');
+  svg.setAttribute('viewBox', [left, -top, width, height].join(' '));
+  for (const a of axes) {
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', a.x); line.setAttribute('y1', -a.y);
+    line.setAttribute('x2', a.endX); line.setAttribute('y2', -a.endY);
+    svg.appendChild(line);
+  }
+  $('cadYaw').textContent = axes.map(a => {
+    const deg = a.yaw * 180 / Math.PI;
+    return a.name + ' ' + (deg < 0 ? '−' : deg > 0 ? '+' : '') + Number(Math.abs(deg).toFixed(2)) + '°';
+  }).join(' · ');
+  const pitch = V.noseDown * 180 / Math.PI;
+  $('cadPitch').textContent = pitch === 0 ? 'Chassis pitch 0° (level)' :
+    'Chassis pitch ' + Math.abs(pitch).toFixed(2) + '° nose ' + (pitch > 0 ? 'down' : 'up');
+  for (const [x, y, name] of V.line) {
+    const spot = document.createElement('span');
+    spot.className = 'planSpot'; spot.title = name;
+    spot.style.left = xPercent(x);
+    spot.style.top = yPercent(y);
+    $('cadDrawing').appendChild(spot); planSpots.push(spot);
+  }
+  planImage.onload = () => { $('cadDetail').hidden = false; drawWorld(); };
+  planImage.src = V.plan.image;
+}
+
+function fit(canvas) {
+  const r = canvas.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  const h = canvas.id === "world" ? r.width * W.height / W.width : 200;
+  canvas.width = Math.round(r.width * d); canvas.height = Math.round(h * d);
+  canvas.style.height = h + 'px';
+  const ctx = canvas.getContext('2d'); ctx.setTransform(d, 0, 0, d, 0, 0); return [ctx, r.width, h];
+}
+
+const heatSpan = Math.max(1, ...W.heat.map(h => Math.abs(h[3])));
+function heatColor(t, alpha) {
+  const v = Math.max(-1, Math.min(1, (t - W.ambient) / heatSpan));
+  const [r, g, b] = v >= 0 ? [220, 60, 40] : [40, 110, 230];
+  return `rgba(${r},${g},${b},${(alpha * Math.abs(v)).toFixed(3)})`;
+}
+function trueTemp(x, y) {
+  let t = W.ambient;
+  for (const [cx, cy, r, d] of W.heat) { const q = Math.hypot(x - cx, y - cy) / r; t += d * Math.exp(-q * q); }
+  return t;
+}
+let heatCache = null;
+function heatImage() {  // true field, 2 cm per pixel, drawn scaled and smoothed
+  if (heatCache) return heatCache;
+  const nx = Math.ceil(W.width / 0.02), ny = Math.ceil(W.height / 0.02);
+  const c = document.createElement('canvas'); c.width = nx; c.height = ny;
+  const g = c.getContext('2d'), img = g.createImageData(nx, ny);
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const v = Math.max(-1, Math.min(1, (trueTemp((i + 0.5) * 0.02, W.height - (j + 0.5) * 0.02) - W.ambient) / heatSpan));
+    const o = 4 * (j * nx + i), rgb = v >= 0 ? [220, 60, 40] : [40, 110, 230];
+    img.data[o] = rgb[0]; img.data[o + 1] = rgb[1]; img.data[o + 2] = rgb[2];
+    img.data[o + 3] = Math.round(255 * 0.55 * Math.abs(v));
+  }
+  g.putImageData(img, 0, 0);
+  return heatCache = c;
+}
+function drawWorld() {
+  const [ctx, w, h] = fit($('world'));
+  const k = Math.min(w / W.width, h / W.height);
+  const X = x => x * k, Y = y => h - y * k;
+  ctx.clearRect(0, 0, w, h);
+  ctx.strokeStyle = css('--line'); ctx.lineWidth = 1;
+  for (let x = 0; x <= W.width + 1e-9; x += 0.5) { ctx.beginPath(); ctx.moveTo(X(x), 0); ctx.lineTo(X(x), h); ctx.stroke(); }
+  for (let y = 0; y <= W.height + 1e-9; y += 0.5) { ctx.beginPath(); ctx.moveTo(0, Y(y)); ctx.lineTo(w, Y(y)); ctx.stroke(); }
+  if (W.heat.length && $('showHeat').checked) ctx.drawImage(heatImage(), 0, 0, W.width * k, W.height * k);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = css('--tape');
+  for (const l of W.lines) {
+    ctx.lineWidth = Math.max(1.5, l.w * k); ctx.beginPath();
+    l.pts.forEach(([x, y], i) => i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))); ctx.stroke();
+  }
+  ctx.fillStyle = css('--obstacle');
+  for (const [x0, y0, x1, y1] of W.boxes) ctx.fillRect(X(x0), Y(y1), (x1 - x0) * k, (y1 - y0) * k);
+  for (const [x, y, r] of W.circles) { ctx.beginPath(); ctx.arc(X(x), Y(y), r * k, 0, 7); ctx.fill(); }
+  ctx.strokeStyle = css('--wall'); ctx.lineWidth = 3;
+  for (const [ax, ay, bx, by] of W.walls) { ctx.beginPath(); ctx.moveTo(X(ax), Y(ay)); ctx.lineTo(X(bx), Y(by)); ctx.stroke(); }
+  if (DATA.map.length && $('showMap').checked) {
+    const now = S.t[idx];
+    for (const [t, mx, my, mt] of DATA.map) {
+      if (t > now) break;
+      ctx.fillStyle = heatColor(mt, 1); ctx.strokeStyle = css('--ink'); ctx.lineWidth = 0.6;
+      ctx.beginPath(); ctx.arc(X(mx), Y(my), 3.2, 0, 7); ctx.fill(); ctx.stroke();
+    }
+  }
+  // trail
+  ctx.strokeStyle = css('--trail'); ctx.globalAlpha = 0.45; ctx.lineWidth = 2; ctx.beginPath();
+  for (let i = 0; i <= idx; i++) i ? ctx.lineTo(X(S.x[i]), Y(S.y[i])) : ctx.moveTo(X(S.x[i]), Y(S.y[i]));
+  ctx.stroke(); ctx.globalAlpha = 1;
+  // robot
+  const x = S.x[idx], y = S.y[idx], yaw = S.yaw[idx];
+  const P = (bx, by) => [X(x + Math.cos(yaw) * bx - Math.sin(yaw) * by), Y(y + Math.sin(yaw) * bx + Math.cos(yaw) * by)];
+  V.distance.forEach(([dx, dy, dyaw, max], i) => {
+    const r = S.dist[i][idx], [ox, oy] = P(dx, dy), a = yaw + dyaw, len = r == null ? max : r;
+    ctx.strokeStyle = r == null ? css('--muted') : css('--warn'); ctx.setLineDash(r == null ? [4, 4] : []);
+    ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(ox, oy);
+    ctx.lineTo(ox + Math.cos(a) * len * k, oy - Math.sin(a) * len * k); ctx.stroke(); ctx.setLineDash([]);
+  });
+  const robot = S.hit[idx] ? css('--bad') : css('--robot');
+  const [bx, by] = P(V.bodyX || 0, 0);
+  ctx.beginPath(); ctx.arc(bx, by, V.body * k, 0, 7);
+  if (V.plan && planImage.complete && planImage.naturalWidth) {
+    const {lo, hi} = V.plan;
+    ctx.save(); ctx.translate(X(x), Y(y)); ctx.rotate(-yaw);
+    ctx.drawImage(planImage, lo[0] * k, -hi[1] * k, (hi[0] - lo[0]) * k, (hi[1] - lo[1]) * k);
+    ctx.restore(); ctx.strokeStyle = robot; ctx.lineWidth = S.hit[idx] ? 2 : 1; ctx.stroke();
+  } else {
+    ctx.fillStyle = robot; ctx.globalAlpha = 0.18; ctx.fill();
+    ctx.globalAlpha = 1; ctx.strokeStyle = robot; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = css('--ink');
+    for (const side of [1, -1]) {
+      const c = [[-V.wheel, side * (V.track / 2 - 0.006)], [V.wheel, side * (V.track / 2 - 0.006)],
+                 [V.wheel, side * (V.track / 2 + 0.006)], [-V.wheel, side * (V.track / 2 + 0.006)]].map(p => P(...p));
+      ctx.beginPath(); c.forEach((p, i) => i ? ctx.lineTo(...p) : ctx.moveTo(...p)); ctx.fill();
+    }
+    const [hx, hy] = P((V.bodyX || 0) + V.body, 0); ctx.strokeStyle = robot;
+    ctx.beginPath(); ctx.moveTo(X(x), Y(y)); ctx.lineTo(hx, hy); ctx.stroke();
+  }
+  V.line.forEach(([sx, sy], i) => {
+    const [px, py] = P(sx, sy); ctx.beginPath(); ctx.arc(px, py, 3, 0, 7);
+    ctx.fillStyle = S.line[i][idx] > 0.5 ? css('--bad') : css('--muted'); ctx.fill();
+  });
+}
+
+const flagBit = (f, b) => f >= 0 && (f & b) !== 0;
+const rows = [
+  ['robot LED', i => S.led[i], '--robot'],
+  ['remote LED', i => S.rled[i], '--robot'],
+  ['remote link', i => (S.link[i] & 2) ? 1 : 0, '--ok'],
+  ['permitted', i => flagBit(S.flags[i], 4) ? 1 : 0, '--ok'],
+  ['E-stop', i => flagBit(S.flags[i], 2) ? 1 : 0, '--bad'],
+  ['collision', i => S.hit[i], '--bad'],
+];
+function drawStrip() {
+  const [ctx, w, h] = fit($('strip'));
+  ctx.clearRect(0, 0, w, h);
+  const left = 78, rh = 14, gap = 4, plotW = w - left - 4;
+  const tx = i => left + (N > 1 ? i / (N - 1) : 0) * plotW;
+  ctx.font = '11px system-ui, sans-serif'; ctx.textBaseline = 'middle';
+  rows.forEach(([label, f, color], r) => {
+    const y = 4 + r * (rh + gap);
+    ctx.fillStyle = css('--muted'); ctx.fillText(label, 0, y + rh / 2);
+    ctx.fillStyle = css('--chip'); ctx.fillRect(left, y, plotW, rh);
+    ctx.fillStyle = css(color);
+    let start = -1;
+    for (let i = 0; i <= N; i++) {
+      const on = i < N && f(i);
+      if (on && start < 0) start = i;
+      if (!on && start >= 0) { ctx.fillRect(tx(start), y, Math.max(1, tx(i) - tx(start)), rh); start = -1; }
+    }
+  });
+  const y0 = 4 + rows.length * (rh + gap), dh = h - y0 - 4;
+  ctx.fillStyle = css('--muted'); ctx.fillText('duty L/R', 0, y0 + dh / 2);
+  ctx.strokeStyle = css('--line'); ctx.beginPath(); ctx.moveTo(left, y0 + dh / 2); ctx.lineTo(left + plotW, y0 + dh / 2); ctx.stroke();
+  for (const [key, col] of [['ul', '--robot'], ['ur', '--warn']]) {
+    ctx.strokeStyle = css(col); ctx.lineWidth = 1.2; ctx.beginPath();
+    for (let i = 0; i < N; i++) { const yy = y0 + dh / 2 - S[key][i] * dh / 2; i ? ctx.lineTo(tx(i), yy) : ctx.moveTo(tx(i), yy); }
+    ctx.stroke();
+  }
+  ctx.strokeStyle = css('--ink'); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(tx(idx), 0); ctx.lineTo(tx(idx), h); ctx.stroke();
+}
+
+function bar(label, v, text) {
+  const pos = Math.max(-1, Math.min(1, v));
+  const style = pos >= 0 ? `left:50%;width:${pos * 50}%` : `left:${50 + pos * 50}%;width:${-pos * 50}%`;
+  return `<span>${label}</span><div class="bar"><i style="${style}"></i></div><span>${text}</span>`;
+}
+function panel() {
+  const t = S.t[idx];
+  $('time').textContent = (t / 1000).toFixed(2) + ' s';
+  $('seek').value = idx;
+  const dot = (el, on, color) => { el.style.background = on ? color : '#333'; };
+  dot($('ledRobot'), S.led[idx], '#facc15');
+  dot($('ledRemote'), S.rled[idx], '#facc15');
+  const r = !S.r[idx], g = !S.g[idx], b = !S.b[idx];  // active-low RGB
+  $('ledRgb').style.background = (r || g || b) ? `rgb(${r ? 255 : 0},${g ? 210 : 0},${b ? 255 : 0})` : '#333';
+  const f = S.flags[idx], link = S.link[idx];
+  const chips = [['robot link', link & 1, 'good'], ['remote link', link & 2, 'good'],
+    ['ACK', flagBit(f, 1), 'good'], ['permitted', flagBit(f, 4), 'good'], ['E-STOP', flagBit(f, 2), 'bad'],
+    ['outputs disabled', flagBit(f, 8), 'bad']];
+  $('chips').innerHTML = chips.map(([n, on, kind]) => `<span class="chip ${on ? 'on ' + kind : ''}">${n}</span>`).join('');
+  const speedMs = idx > 0 ? Math.hypot(S.x[idx] - S.x[idx - 1], S.y[idx] - S.y[idx - 1]) / ((S.t[idx] - S.t[idx - 1]) / 1000) : 0;
+  $('kv').innerHTML = [['x, y', S.x[idx].toFixed(3) + ', ' + S.y[idx].toFixed(3) + ' m'],
+    ['heading', (S.yaw[idx] * 180 / Math.PI).toFixed(1) + '°'], ['speed', (speedMs * 100).toFixed(1) + ' cm/s'],
+    ['battery', S.batt[idx].toFixed(2) + ' V'],
+    ['line offset', W.lines.length ? (S.off[idx] * 1000).toFixed(1) + ' mm' : '—'],
+    ['temperature', S.temp[idx].toFixed(1) + ' °C sensed / ' + S.ttrue[idx].toFixed(1) + ' true']]
+    .map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('');
+  $('bars').innerHTML = bar('duty L', S.ul[idx], S.ul[idx].toFixed(2)) + bar('duty R', S.ur[idx], S.ur[idx].toFixed(2)) +
+    bar('wheel L', S.wl[idx] / 40, S.wl[idx].toFixed(1)) + bar('wheel R', S.wr[idx] / 40, S.wr[idx].toFixed(1));
+  $('sensors').innerHTML = V.line.map(([, , n], i) => bar(n, S.line[i][idx], (S.line[i][idx] * 100).toFixed(0) + '%')).join('') +
+    V.distance.map((d, i) => { const v = S.dist[i][idx]; return bar(d[4], v == null ? 0 : v / d[3], v == null ? '—' : (v * 100).toFixed(0) + 'cm'); }).join('');
+  planSpots.forEach((spot, i) => spot.classList.toggle('on', S.line[i][idx] > 0.5));
+  let current = null;
+  for (const [lt, li] of logItems) {
+    const future = lt > t; li.classList.toggle('future', future); li.classList.remove('now');
+    if (!future) current = li;
+  }
+  if (current) { current.classList.add('now'); if (playing || seeking) {
+    const box = $('log'), top = current.offsetTop - box.offsetTop;  // scroll the log only, not the page
+    if (top < box.scrollTop || top > box.scrollTop + box.clientHeight - current.offsetHeight)
+      box.scrollTop = top - box.clientHeight / 2;
+  } }
+}
+let seeking = false;
+function render() { drawWorld(); drawStrip(); panel(); }
+function setIdx(i) { idx = Math.max(0, Math.min(N - 1, i)); simTime = S.t[idx]; render(); }
+function frame(ts) {
+  if (!playing) return;
+  const dt = lastFrame ? ts - lastFrame : 0; lastFrame = ts;
+  simTime += dt * speed;
+  while (idx < N - 1 && S.t[idx + 1] <= simTime) idx++;
+  render();
+  if (idx >= N - 1) { playing = false; $('play').textContent = '▶'; return; }
+  requestAnimationFrame(frame);
+}
+function toggle() {
+  if (!playing && idx >= N - 1) setIdx(0);
+  playing = !playing; $('play').textContent = playing ? '⏸' : '▶';
+  lastFrame = 0; simTime = S.t[idx]; if (playing) requestAnimationFrame(frame);
+}
+$('play').onclick = toggle;
+$('speed').onchange = e => { speed = +e.target.value; };
+$('seek').oninput = e => { seeking = true; setIdx(+e.target.value); seeking = false; };
+$('strip').onclick = e => {
+  const r = e.target.getBoundingClientRect(), left = 78, w = r.width - left - 4;
+  seeking = true; setIdx(Math.round((e.clientX - r.left - left) / w * (N - 1))); seeking = false;
+};
+if (DATA.map.length || W.heat.length) {
+  $('mapBox').hidden = false;
+  const m = DATA.mapScore;
+  $('mapKv').innerHTML = (DATA.map.length ? [
+    ['points', m.points + ' (' + m.unique + ' unique)'], ['density', m.perM2 + ' /m²'],
+    ['coverage', (m.coverage * 100).toFixed(0) + '% of ' + m.cell + ' m cells'],
+    ['position error', (m.posErr * 100).toFixed(1) + ' cm mean, ' + (m.maxPosErr * 100).toFixed(1) + ' max'],
+    ['temp error', m.tempErr.toFixed(2) + ' °C (sensor lag + noise)'],
+    ['map error', m.mapErr.toFixed(2) + ' °C at logged positions']] : [['points', 'none logged (print "MAP x y tempC")']])
+    .map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('');
+  $('showHeat').onchange = $('showMap').onchange = render;
+}
+logItems.forEach(([lt, li]) => { li.style.cursor = 'pointer'; li.onclick = () => {
+  let i = 0; while (i < N - 1 && S.t[i + 1] <= lt) i++; setIdx(i); }; });
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.code === 'Space') { e.preventDefault(); toggle(); }
+  if (e.code === 'ArrowRight') setIdx(idx + 10);
+  if (e.code === 'ArrowLeft') setIdx(idx - 10);
+});
+window.addEventListener('resize', render);
+setIdx(0);
+</script>
+</body>
+</html>

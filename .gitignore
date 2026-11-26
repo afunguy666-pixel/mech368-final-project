@@ -3,6 +3,7 @@
 *.hex
 *.bin
 *.o
+__pycache__/
 
 # KiCad local files
 *.kicad_prl

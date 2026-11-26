@@ -3,8 +3,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 build_dir=$(mktemp -d)
 trap 'rm -rf "$build_dir"' EXIT
-"${CXX:-c++}" -std=c++11 -Wall -Wextra -Werror -pedantic \
-  -I libraries/Mech368Safety/src tests/motion_safety_test.cpp \
-  -o "$build_dir/motion_safety_test"
-"$build_dir/motion_safety_test"
-printf '%s\n' 'Host motion safety tests passed.'
+includes=()
+for lib in libraries/*/src; do includes+=(-I "$lib"); done
+for test in tests/*_test.cpp; do
+  executable="$build_dir/$(basename "${test%.cpp}")"
+  "${CXX:-c++}" -std=c++11 -Wall -Wextra -Werror -pedantic \
+    "${includes[@]}" "$test" -o "$executable"
+  "$executable"
+  printf '%s\n' "PASS: $test"
+done

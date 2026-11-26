@@ -1,29 +1,105 @@
 #include <Arduino.h>
-#include <MotionSafety.h>
+#include <ArduinoBLE.h>
+#include <Arduino_APDS9960.h>
+#include <DirectLineTracker.h>
+#include <Mech368Protocol.h>
 
-mech368::MotionSafety safety;
+namespace wire = mech368::ble;
+wire::Receiver receiver;
+bool motionPermitted() { return receiver.allowed(millis()); }
+mech368::DirectLineTracker tracker(motionPermitted);
+void leftEncoderIsr() { tracker.leftEdge(); }
+void rightEncoderIsr() { tracker.rightEdge(); }
+BLEService controlService(wire::kService);
+// Extra byte detects oversized writes even if ArduinoBLE truncates to capacity.
+// Variable length preserves short writes so they can also be rejected.
+BLECharacteristic commandCharacteristic(wire::kCommand, BLEWriteWithoutResponse,
+                                         wire::kFrameSize + 1);
+BLECharacteristic statusCharacteristic(wire::kStatus, BLERead | BLENotify,
+                                        wire::kFrameSize);
+bool bleReady = false;
+bool linkUp = false;
+bool stopSinceGestureCheck = false;
+uint32_t lastStatusAt = 0;
+uint32_t sessionCounter = 0;
+
+void publishStatus(uint32_t now) {
+  uint8_t bytes[wire::kFrameSize];
+  if (wire::encode(receiver.status(now, tracker.outputsEnabled()), bytes, sizeof(bytes)))
+    statusCharacteristic.writeValue(bytes, sizeof(bytes));
+}
+
+void onConnect(BLEDevice central) {
+  (void)central;
+  tracker.stop();
+  linkUp = true;
+  // Connection-scoped discriminator, NOT authentication or a persistent nonce.
+  sessionCounter += static_cast<uint32_t>(micros()) | 1U;
+  if (sessionCounter == 0) ++sessionCounter;
+  receiver.connect(sessionCounter, millis());
+  publishStatus(millis());
+}
+
+void onDisconnect(BLEDevice central) {
+  (void)central;
+  tracker.stop();
+  linkUp = false;
+  receiver.disconnect(millis());
+  // ArduinoBLE resumes peripheral advertising after a disconnect.
+}
+
+void onCommand(BLEDevice central, BLECharacteristic characteristic) {
+  (void)central;
+  uint8_t bytes[wire::kFrameSize];
+  const int length = characteristic.valueLength();
+  if (length != static_cast<int>(sizeof(bytes))) return;
+  if (characteristic.readValue(bytes, sizeof(bytes)) != length) return;
+  // Handle each write event immediately: a following motion frame cannot
+  // overwrite an E-stop before the loop sees it. No BLE I/O inside this callback.
+  const uint32_t now = millis();
+  // A newly arrived heartbeat must not hide an expiry during BLE.poll().
+  if (!receiver.allowed(now)) tracker.stop();
+  wire::Type accepted;
+  if (receiver.receive(bytes, sizeof(bytes), now, &accepted) && accepted == wire::Type::Stop) {
+    tracker.stop();
+    stopSinceGestureCheck = true;
+  }
+}
 
 void setup() {
-  // TODO: Verify driver, safe electrical defaults and board wiring before
-  // implementing any motor- or battery-related I/O.
+  tracker.begin(leftEncoderIsr, rightEncoderIsr);
+  pinMode(LED_BUILTIN, OUTPUT);
+  bleReady = BLE.begin();
+  if (!bleReady) return;
+  BLE.setLocalName("MECH368-Robot");
+  BLE.setAdvertisedService(controlService);
+  controlService.addCharacteristic(commandCharacteristic);
+  controlService.addCharacteristic(statusCharacteristic);
+  BLE.addService(controlService);
+  BLE.setEventHandler(BLEConnected, onConnect);
+  BLE.setEventHandler(BLEDisconnected, onDisconnect);
+  commandCharacteristic.setEventHandler(BLEWritten, onCommand);
+  BLE.advertise();
 }
-//setup 
-//test
 
 void loop() {
-  // TODO: Replace placeholders with bounded, nonblocking BLE input and a
-  // local APDS-9960 gesture event. Never pass cached packets as new commands.
-  const bool linkUp = false;
-  const auto packet = mech368::Packet::None;
-  const bool localRecovery = false;
-  const uint32_t now = static_cast<uint32_t>(millis());
-  safety.update(now, linkUp, packet, localRecovery);
-
-  if (!safety.motionAllowed(now)) {
-    // TODO: Apply a verified zero motor command and update status indication.
-    return;
+  if (!motionPermitted()) tracker.stop();
+  if (bleReady) BLE.poll();
+  if (!motionPermitted()) tracker.stop();
+  const int sensedGesture = tracker.readGesture();
+  const int gesture = stopSinceGestureCheck ? GESTURE_NONE : sensedGesture;
+  stopSinceGestureCheck = false;
+  const uint32_t now = millis();
+  const bool wasLatched = receiver.estopLatched();
+  receiver.tick(now, wasLatched && gesture != GESTURE_NONE);
+  if (gesture == GESTURE_DOWN) tracker.stop();
+  // Any recovery gesture is consumed. A later UP on a fresh link starts.
+  if (gesture == GESTURE_UP && !wasLatched) tracker.start();
+  tracker.update();
+  if (linkUp && static_cast<uint32_t>(now - lastStatusAt) >= wire::kSendMs) {
+    lastStatusAt = now;
+    publishStatus(millis());
   }
-
-  // TODO: Gate all motor paths here: differential steering, line following,
-  // obstacle avoidance and pose tracking. No actuator output in this starter.
+  const bool fault = !bleReady || !linkUp || !receiver.allowed(now);
+  digitalWrite(LED_BUILTIN, fault ? ((now / 125U) % 2U ? HIGH : LOW) : HIGH);
 }
