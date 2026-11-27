@@ -1,0 +1,243 @@
+
+#include <Arduino.h>
+
+// ==========================================
+// MOTOR PINS (DRV8833)
+// ==========================================
+const int MOTOR_A_IN1 = 5;
+const int MOTOR_A_IN2 = 6;
+const int MOTOR_B_IN1 = 9;
+const int MOTOR_B_IN2 = 10;
+
+// ==========================================
+// ENCODER PINS
+// ==========================================
+const int LEFT_C1 = 2;
+const int RIGHT_C1 = 4;
+
+// Encoder counts per revolution (x1)
+const float PPR = 700.0f;
+
+// ==========================================
+// PI CONTROLLER SETTINGS
+// ==========================================
+const float TARGET_RPM = 60.0f;
+
+const float KP = 0.8f;
+const float KI = 1.5f;
+
+// Separate integrals for each motor
+float leftIntegral = 0.0f;
+float rightIntegral = 0.0f;
+
+// ==========================================
+// TIMING
+// ==========================================
+const unsigned long SAMPLE_MS = 100;
+const unsigned long TEST_MS = 10000;
+
+unsigned long startTime = 0;
+unsigned long lastSample = 0;
+
+bool finished = false;
+
+// ==========================================
+// ENCODER VARIABLES
+// ==========================================
+volatile long leftCount = 0;
+volatile long rightCount = 0;
+
+long previousLeft = 0;
+long previousRight = 0;
+
+// ==========================================
+// INTERRUPT FUNCTIONS
+// ==========================================
+void countLeft() {
+  leftCount++;
+}
+
+void countRight() {
+  rightCount++;
+}
+
+// ==========================================
+// STOP MOTORS
+// ==========================================
+void stopMotors() {
+  analogWrite(MOTOR_A_IN1, 0);
+  analogWrite(MOTOR_B_IN1, 0);
+
+  digitalWrite(MOTOR_A_IN2, LOW);
+  digitalWrite(MOTOR_B_IN2, LOW);
+}
+
+// ==========================================
+// PI CONTROLLER
+// ==========================================
+int updateMotorPWM(float measuredRPM,
+                   float dt,
+                   float &integralTerm,
+                   float feedforward) {
+
+  float error = TARGET_RPM - measuredRPM;
+
+
+
+  // Integral term
+  float candidateI =
+      integralTerm + KI * error * dt;
+
+  candidateI = constrain(candidateI,
+                         -80.0f, 80.0f);
+
+  // Check output saturation
+  float candidateOutput =
+      feedforward + KP * error + candidateI;
+
+  // Anti-windup
+  if (!((candidateOutput > 255 && error > 0) ||
+        (candidateOutput < 0 && error < 0))) {
+    integralTerm = candidateI;
+  }
+
+  // Final PWM calculation
+  float output =
+      feedforward + KP * error + integralTerm;
+
+  int pwm = constrain((int)(output + 0.5f),
+                      0, 255);
+
+  return pwm;
+}
+
+// ==========================================
+// SETUP
+// ==========================================
+void setup() {
+
+  Serial.begin(115200);
+
+  pinMode(MOTOR_A_IN1, OUTPUT);
+  pinMode(MOTOR_A_IN2, OUTPUT);
+  pinMode(MOTOR_B_IN1, OUTPUT);
+  pinMode(MOTOR_B_IN2, OUTPUT);
+
+  analogWriteResolution(8);
+
+  stopMotors();
+
+  // Encoder setup
+  pinMode(LEFT_C1, INPUT);
+  pinMode(RIGHT_C1, INPUT);
+
+  attachInterrupt(
+    digitalPinToInterrupt(LEFT_C1),
+    countLeft,
+    RISING
+  );
+
+  attachInterrupt(
+    digitalPinToInterrupt(RIGHT_C1),
+    countRight,
+    RISING
+  );
+
+  startTime = millis();
+  lastSample = startTime;
+
+  Serial.println(
+    "time_s,left_rpm,right_rpm,left_pwm,right_pwm"
+  );
+}
+
+// ==========================================
+// MAIN LOOP
+// ==========================================
+void loop() {
+
+  if (finished) return;
+
+  unsigned long now = millis();
+
+  // Stop after 10 seconds
+  if (now - startTime >= TEST_MS) {
+
+    stopMotors();
+    finished = true;
+
+    Serial.println("Motor test complete.");
+    return;
+  }
+
+  // Update every 100 ms
+  if (now - lastSample < SAMPLE_MS) {
+    return;
+  }
+
+  float dt = (now - lastSample) / 1000.0f;
+  lastSample = now;
+
+  // Read encoder counts
+  noInterrupts();
+
+  long currentLeft = leftCount;
+  long currentRight = rightCount;
+
+  interrupts();
+
+  long deltaLeft =
+      currentLeft - previousLeft;
+
+  long deltaRight =
+      currentRight - previousRight;
+
+  previousLeft = currentLeft;
+  previousRight = currentRight;
+
+  // Calculate RPM
+  float leftRPM =
+      deltaLeft * 60.0f / (PPR * dt);
+
+  float rightRPM =
+      deltaRight * 60.0f / (PPR * dt);
+
+  // PI controller for left motor
+  int leftPWM = updateMotorPWM(
+    leftRPM,
+    dt,
+    leftIntegral, 105.0f
+  );
+
+  // PI controller for right motor
+  int rightPWM = updateMotorPWM(
+    rightRPM,
+    dt,
+    rightIntegral, 94.0f
+  );
+
+  // Drive both motors
+  digitalWrite(MOTOR_A_IN2, LOW);
+  digitalWrite(MOTOR_B_IN2, LOW);
+
+  analogWrite(MOTOR_A_IN1, leftPWM);
+  analogWrite(MOTOR_B_IN1, rightPWM);
+
+  // Print results
+  Serial.print(
+    (now - startTime) / 1000.0f, 2
+  );
+
+  Serial.print(",");
+  Serial.print(leftRPM, 2);
+
+  Serial.print(",");
+  Serial.print(rightRPM, 2);
+
+  Serial.print(",");
+  Serial.print(leftPWM);
+
+  Serial.print(",");
+  Serial.println(rightPWM);
+}
+
