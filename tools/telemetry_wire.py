@@ -9,7 +9,9 @@ KINDS = {1: "pose", 2: "ir", 3: "wheels", 4: "env"}
 FIELDS = ("source run log_segment bridge_epoch session kind seq robot_ms course_segment "
           "gap flags x_mm y_mm yaw_mrad travel_mm ir0 ir1 ir2 ir3 error_mm "
           "left_count right_count bias_mdps battery_adc battery_mv temp_c nav_state "
-          "safety_flags bias_samples temp_age_ms").split()
+          "safety_flags bias_samples temp_age_ms drive_mode battery_state").split()
+DRIVE_MODES = ("idle", "manual", "auto", "")
+BATTERY_STATES = ("unknown", "ok", "low", "absent")
 
 
 def decode(line):
@@ -42,7 +44,8 @@ def decode(line):
     else:
         adc, mv, temp, state, safety, samples, age = struct.unpack_from("<HHh4B", raw, 8)
         row.update(battery_adc=adc, battery_mv=mv, temp_c=temp / 100 if temp != -32768 else "",
-                   nav_state=state, safety_flags=safety, bias_samples=samples,
+                   nav_state=state, safety_flags=safety & 15, bias_samples=samples,
+                   drive_mode=DRIVE_MODES[(safety >> 4) & 3], battery_state=BATTERY_STATES[safety >> 6],
                    temp_age_ms=age * 10 if age != 255 else "")
     return row
 

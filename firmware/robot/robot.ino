@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include <ArduinoBLE.h>
 #include <Arduino_APDS9960.h>
+#include <BatteryMonitor.h>
+#include <DriveCalibration.h>
 #include <DirectLineTracker.h>
 #include <DriveModeSwitch.h>
 #include <Mech368Protocol.h>
@@ -33,6 +35,24 @@ ctl::DriveModeSwitch modes;
 ctl::SlewLimiter manualLinear(1.0f), manualAngular(8.0f);  // per second
 uint32_t lastManualAt = 0;
 bool faultSeen = false, faultLit = false;
+
+// Low-battery indicator. A7 reads the pack through a divider. Every value
+// here is PROVISIONAL until checked with a multimeter on the real pack (see
+// docs/GESTURE_BATTERY_HEATMAP.zh-CN.md). The firmware only indicates; it
+// never cuts power or motion because of the battery.
+constexpr int kBatteryPin = A7;
+constexpr int kLowBatteryLed = D1;  // dedicated red "LOW BAT" LED: D1 -> 1 k -> LED -> GND
+ctl::BatteryConfig batteryConfig() {
+  ctl::BatteryConfig c;
+  c.divider = mech368::calibration::batteryDivider;  // Vpack / VA7, shared with telemetry
+  c.lowMv = 6400;      // assumed 7.2 V-class pack (6xNiMH or 2S Li-ion)
+  c.clearMv = 6800;    // hysteresis: must recover above this to clear
+  c.lowHoldMs = 5000;  // filtered value below lowMv this long
+  c.clearHoldMs = 10000;
+  return c;
+}
+ctl::BatteryMonitor battery(batteryConfig());
+uint32_t lastBatteryAt = 0;
 uint32_t lastStatusAt = 0;
 uint32_t sessionCounter = 0;
 #ifdef MECH368_TRACE_ACCEPTED
@@ -170,11 +190,37 @@ void showMode(uint32_t now) {
   digitalWrite(LEDB, b ? LOW : HIGH);
 }
 
+// Sample A7 every 50 ms. LOW lights the dedicated D1 LED steadily and makes
+// the green power LED dip off twice every 2 s. Neither shares a colour,
+// position or rhythm with the orange 8 Hz BLE fault blink on LED_BUILTIN.
+void updateBattery(uint32_t now) {
+  if (static_cast<uint32_t>(now - lastBatteryAt) >= 50) {
+    lastBatteryAt = now;
+    battery.sample(now, analogRead(kBatteryPin));
+  }
+  const bool low = battery.low();
+  digitalWrite(kLowBatteryLed, low ? HIGH : LOW);
+  const uint32_t phase = now % 2000U;
+  const bool dip = low && (phase < 150U || (phase >= 300U && phase < 450U));
+  digitalWrite(LED_PWR, dip ? LOW : HIGH);
+}
+
+uint8_t modeAndBatteryBits() {
+  const uint8_t mode = static_cast<uint8_t>(tracker.manual() ? ctl::DriveMode::Manual
+                                            : tracker.active() ? ctl::DriveMode::Auto
+                                                               : ctl::DriveMode::Idle);
+  return static_cast<uint8_t>((mode << 4) | (static_cast<uint8_t>(battery.state()) << 6));
+}
+
 void setup() {
 #ifdef MECH368_TRACE_ACCEPTED
   pinMode(D0, OUTPUT);
   digitalWrite(D0, LOW);
 #endif
+  pinMode(kLowBatteryLed, OUTPUT);
+  digitalWrite(kLowBatteryLed, LOW);
+  pinMode(LED_PWR, OUTPUT);
+  digitalWrite(LED_PWR, HIGH);
   tracker.ownLeds = false;
   tracker.begin(leftEncoderIsr, rightEncoderIsr);
   pinMode(LED_BUILTIN, OUTPUT);
@@ -210,7 +256,8 @@ void loop() {
     publishStatus(millis());
   }
   showMode(now);
+  updateBattery(now);
   const bool fault = !bleReady || !linkUp || !receiver.allowed(now);
   digitalWrite(LED_BUILTIN, fault ? ((now / 125U) % 2U ? HIGH : LOW) : HIGH);
-  if (linkUp) telemetry.update(tracker, receiver);
+  if (linkUp) telemetry.update(tracker, receiver, modeAndBatteryBits());
 }

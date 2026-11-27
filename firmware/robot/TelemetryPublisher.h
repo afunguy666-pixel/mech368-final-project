@@ -44,7 +44,11 @@ class TelemetryPublisher {
  public:
   BLECharacteristic characteristic{tel::kUuid, BLENotify, tel::kSize};
   void reset(uint32_t now) { schedule_.reset(now); temperature_.reset(); }
-  void update(const mech368::DirectLineTracker& tracker, const mech368::ble::Receiver& receiver) {
+  // statusHigh: bits 4-5 drive mode (0 idle, 1 manual, 2 auto), bits 6-7
+  // battery state (0 unknown, 1 ok, 2 low, 3 absent), OR-ed above the four
+  // safety flags of the environment frame.
+  void update(const mech368::DirectLineTracker& tracker, const mech368::ble::Receiver& receiver,
+              uint8_t statusHigh = 0) {
     if (!characteristic.subscribed()) return;
     tel::Kind kind;
     uint16_t seq;
@@ -104,7 +108,8 @@ class TelemetryPublisher {
         wire::put16(data + 4, temperature_.collect(data[9]));
         sampleMs = millis();
         data[6] = static_cast<uint8_t>(state);
-        data[7] = static_cast<uint8_t>(receiver.status(sampleMs, tracker.outputsEnabled()).linear);
+        data[7] = static_cast<uint8_t>((receiver.status(sampleMs, tracker.outputsEnabled()).linear & 15) |
+                                       (statusHigh & 0xF0));
         data[8] = static_cast<uint8_t>(tracker.gyroBias().samples());
         break;
       }

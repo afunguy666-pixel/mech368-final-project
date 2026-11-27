@@ -14,7 +14,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from calibrate_drive import estimate
 from telemetry import Sink, record
-from telemetry_wire import BIAS_READY, DETOUR, OFF_LINE, RUNNING, Stream, apply_marks, read_csv
+from telemetry_wire import BIAS_READY, DETOUR, OFF_LINE, RUNNING, Stream, apply_marks, decode, read_csv
 from trajectory import Point, Reference, ground_errors, poses
 
 
@@ -25,7 +25,23 @@ def packet(seq, ms, epoch=1, session=11, flags=BIAS_READY, values=(0, 0, 0, 0)):
     return b"@" + checked(struct.pack("<II", epoch, session) + frame).hex().encode() + b"\n"
 
 
+def env_line(seq, ms, safety, temp=2250, age=30, epoch=1, session=11, adc=744, mv=7200):
+    def checked(data):
+        return data + struct.pack("<H", binascii.crc_hqx(data, 0xffff))
+    frame = checked(struct.pack("<BBHIHHh4B", 0x14, BIAS_READY, seq, ms, adc, mv, temp, 1, safety, 50, age))
+    return b"@" + checked(struct.pack("<II", epoch, session) + frame).hex().encode() + b"\n"
+
+
 class RecorderTests(unittest.TestCase):
+    def test_environment_mode_and_battery_bits(self):
+        row = decode(env_line(0, 1000, 0b10_10_0101).strip())
+        self.assertEqual((row["safety_flags"], row["drive_mode"], row["battery_state"]), (5, "auto", "low"))
+        row = decode(env_line(0, 1000, 0b11_01_1100).strip())
+        self.assertEqual((row["safety_flags"], row["drive_mode"], row["battery_state"]), (12, "manual", "absent"))
+        # Older firmware leaves the high bits clear.
+        row = decode(env_line(0, 1000, 0b0000_0100).strip())
+        self.assertEqual((row["drive_mode"], row["battery_state"], row["temp_c"]), ("idle", "unknown", 22.5))
+
     def test_wire_resync_crc_loss_and_wrap(self):
         s = Stream("teach", "test")
         raw = packet(65535, 0xffffffd0)
