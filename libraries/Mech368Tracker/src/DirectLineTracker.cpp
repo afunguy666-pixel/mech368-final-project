@@ -121,16 +121,24 @@ void DirectLineTracker::stop() {
   mode_ = Mode::Stopped;
 }
 
-void DirectLineTracker::start() {
-  if (active() || !motionPermitted_()) return;
+bool DirectLineTracker::startAllowed(const char* what) {
+  if (active() || !motionPermitted_()) return false;
   if (digitalRead(kFault) == LOW) {
-    debugLine.println("DRV8833 FAULT: start inhibited");
-    return;
+    debugLine.print("DRV8833 FAULT: ");
+    debugLine.print(what);
+    debugLine.println(" inhibited");
+    return false;
   }
   if (!gyroBias_.ready(50)) {
-    debugLine.println("gesture UP ignored: gyro bias not measured yet, keep still");
-    return;
+    debugLine.print(what);
+    debugLine.println(" ignored: gyro bias not measured yet, keep still");
+    return false;
   }
+  return true;
+}
+
+bool DirectLineTracker::start() {
+  if (!startAllowed("start")) return false;
   if (calibrated_) {
     startNavigation();
   } else {
@@ -145,6 +153,21 @@ void DirectLineTracker::start() {
     mode_ = Mode::Calibrating;
     debugLine.println("gesture UP: calibrating line sensors");
   }
+  return true;
+}
+
+bool DirectLineTracker::startManual() {
+  if (!startAllowed("manual start")) return false;
+  manualCmd_ = Twist();
+  mode_ = Mode::Manual;
+  debugLine.println("manual: driving from handheld tilt");
+  return true;
+}
+
+void DirectLineTracker::log(const char* text) { debugLine.println(text); }
+
+bool DirectLineTracker::navFault() const {
+  return mode_ == Mode::Stopped && (nav_.state() == NavState::Lost || nav_.state() == NavState::Blocked);
 }
 
 void DirectLineTracker::startNavigation() {
@@ -297,13 +320,16 @@ void DirectLineTracker::update() {
   tickHeading_ = heading_;
   if (active()) {
     readLine(raw_);
-    const Twist cmd = mode_ == Mode::Calibrating ? calibrate(raw_) : navigate(raw_, dt);
+    const Twist cmd = mode_ == Mode::Calibrating ? calibrate(raw_)
+                      : mode_ == Mode::Manual ? manualCmd_ : navigate(raw_, dt);
     targets_ = toWheels(limitTwist(cmd, kTrack, kMaxWheelSpeed), kTrack);
   }
   if (now - lastSpeed_ >= 10) updateDrive(now, left, right);
-  digitalWrite(LEDG, mode_ == Mode::Running ? LOW : HIGH);
-  digitalWrite(LEDB, mode_ == Mode::Waiting || mode_ == Mode::Calibrating ? LOW : HIGH);
-  digitalWrite(LEDR, mode_ == Mode::Stopped && nav_.state() != NavState::Finished ? LOW : HIGH);
+  if (ownLeds) {
+    digitalWrite(LEDG, mode_ == Mode::Running ? LOW : HIGH);
+    digitalWrite(LEDB, mode_ == Mode::Waiting || mode_ == Mode::Calibrating ? LOW : HIGH);
+    digitalWrite(LEDR, mode_ == Mode::Stopped && nav_.state() != NavState::Finished ? LOW : HIGH);
+  }
   if (mode_ == Mode::Running && now - lastReport_ >= 1000) {
     lastReport_ = now;
     debugLine.print(navStateName(nav_.state()));

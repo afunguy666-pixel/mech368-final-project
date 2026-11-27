@@ -40,7 +40,12 @@ packing pragmas, or native-endian serialization. Exactly 20 bytes:
 | 18 | 2 | CRC-16/CCITT-FALSE of bytes 0..17, init FFFF, poly 1021, no reflection/xorout |
 
 Motion bounds are +/-1000 mm/s and +/-4000 mrad/s. These are parser bounds,
-not approved robot speeds. The remote sends ONLY zero motion in this phase.
+not approved robot speeds. The frame layout and version are unchanged by
+gesture steering: the remote now fills these two fields from its tilt (zero
+when its IMU is missing, stale, zeroing or not yet back at neutral), and the
+robot uses them only in MANUAL and only while MotionSafety permits motion.
+An older remote that still sends zero motion is accepted and simply cannot
+drive MANUAL.
 E-stop must carry zero velocity fields. Unknown types, flag bits, or versions
 are rejected. Status flags: bit 0 ACK valid, bit 1 E-stop latched, bit 2 software
 motion permitted, bit 3 driver disabled (the firmware commands nSLEEP low).
@@ -73,7 +78,10 @@ An ACK means the protocol accepted the command, not that a motor moved.
   its latch set. It then resumes sending zero-speed heartbeats.
 - Any fresh APDS swipe on the car (UP, DOWN, LEFT or RIGHT) clears that latch. A stop received in the same poll
   takes priority. The car requires a later valid motion packet and a separate
-  local UP to start again. A local DOWN cancels navigation.
+  local UP to start again. A local DOWN cancels navigation. Gesture
+  selection: LEFT selects MANUAL, RIGHT selects AUTO (either stops first when
+  driving), UP starts the selection, DOWN stops. While latched, a gesture
+  only clears the latch. [Operation](GESTURE_BATTERY_HEATMAP.zh-CN.md)
 
 ## Limits of nonblocking behavior
 

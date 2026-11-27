@@ -24,7 +24,8 @@ void pairedTracker(Simulation& sim) {
   sim.loadVehicle("sim/vehicles/ir_tracker.vehicle");
   sim.useSketch(Robot, "robot");
   sim.useSketch(Remote, "remote", 300);
-  sim.gesture(800, GESTURE_UP);  // still no valid heartbeat
+  sim.gesture(800, GESTURE_UP);     // nothing selected, no valid heartbeat
+  sim.gesture(3000, GESTURE_RIGHT); // select AUTO; selecting never starts
   sim.gesture(3500, GESTURE_UP);
 }
 

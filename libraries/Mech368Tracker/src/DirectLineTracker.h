@@ -12,9 +12,19 @@ class DirectLineTracker {
   void leftEdge();
   void rightEdge();
   int readGesture();
-  void start();
+  // Start AUTO: line sensor calibration sweep (first time), then navigation.
+  bool start();
+  // Start MANUAL: wheel targets follow setManualTwist(). Same drive path,
+  // watchdog and DRV8833 fault checks as AUTO.
+  bool startManual();
+  // Newest operator twist. Ignored unless MANUAL is running.
+  void setManualTwist(const line::Twist& twist) { manualCmd_ = twist; }
   void stop();
   void update();
+  // One best-effort, non-blocking USB debug line.
+  void log(const char* text);
+  // false: the sketch drives the RGB LED itself.
+  bool ownLeds = true;
   bool outputsEnabled() const { return enabled_; }
   const line::Odometry& odometry() const { return odometry_; }
   const line::GyroBias& gyroBias() const { return gyroBias_; }
@@ -23,13 +33,18 @@ class DirectLineTracker {
   uint32_t rightCount() const { return tickRight_; }
   bool calibrating() const { return mode_ == Mode::Calibrating; }
   bool running() const { return mode_ == Mode::Running; }
+  bool manual() const { return mode_ == Mode::Manual; }
+  bool active() const { return mode_ == Mode::Calibrating || mode_ == Mode::Running ||
+                               mode_ == Mode::Manual; }
+  // Navigation ended by itself on lost line / blocked (not finished, not a stop).
+  bool navFault() const;
   line::NavState navState() const { return nav_.state(); }
   const line::LineReading& lineReading() const { return reading_; }
   void sampleInfrared(uint16_t* out) const;
 
  private:
-  enum class Mode { Waiting, Calibrating, Running, Stopped };
-  bool active() const { return mode_ == Mode::Calibrating || mode_ == Mode::Running; }
+  enum class Mode { Waiting, Calibrating, Running, Stopped, Manual };
+  bool startAllowed(const char* what);
   void disableDrive();
   void startNavigation();
   line::Twist calibrate(const uint16_t* raw);
@@ -48,6 +63,7 @@ class DirectLineTracker {
   line::WheelSpeedPI leftPI_, rightPI_;
   line::LineReading reading_;
   line::WheelSpeeds targets_;
+  line::Twist manualCmd_;
   volatile uint32_t leftCount_ = 0, rightCount_ = 0;
   uint32_t tickLeft_ = 0, tickRight_ = 0, speedLeft_ = 0, speedRight_ = 0;
   uint32_t biasLeft_ = 0, biasRight_ = 0;

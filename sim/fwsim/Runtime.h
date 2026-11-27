@@ -139,6 +139,8 @@ class Board {
   bool usbAttached = true;
   unsigned usbWriteLimit = 128;
   int aclCredits = 4;
+  bool imuBeginFails = false;  // IMU.begin() returns 0 (set before power-up)
+  bool imuFrozen = false;      // no new IMU samples (e.g. I2C lock-up)
   std::string serialPartial;
   std::vector<SerialLine> serialOut;
   std::vector<PinEvent> pinLog;

@@ -504,9 +504,10 @@ fwsim::ImuSample imuSample(Board& b) {
 }
 }  // namespace
 
-int BoschSensorClass::begin() { cur().spend(2000); return 1; }
+int BoschSensorClass::begin() { cur().spend(2000); return cur().imuBeginFails ? 0 : 1; }
 int BoschSensorClass::accelerationAvailable() {
   Board& b = cur(); b.spend(b.ioCallUs);
+  if (b.imuFrozen) return 0;
   return newSample(imuState()[b.id].accel, b.now(), accelerationSampleRate());
 }
 int BoschSensorClass::gyroscopeAvailable() {
