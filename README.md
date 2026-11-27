@@ -13,6 +13,7 @@ The remote forwards 10 Hz pose telemetry to a receive-only Windows recorder. An
 optional normally-open handheld stop button connects D2 to ground. Build the
 paired sketches with the project compile script for credit-aware BLE writes.
 [Recorder, teach/live examples and bench results (Chinese)](docs/TELEMETRY.zh-CN.md)
+· [Tilt steering, low-battery LED and heat map (Chinese)](docs/GESTURE_BATTERY_HEATMAP.zh-CN.md)
 
 See [BLE protocol and bench checklist](docs/BLE_PROTOCOL.md) for the exact wire
 format, timing, setup API blocking limitations and unperformed hardware tests.
