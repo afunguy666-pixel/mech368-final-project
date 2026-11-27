@@ -68,7 +68,7 @@ struct LineSensorConfig {
   double spot = 0.004;                  // sensing spot radius (m)
 };
 struct DistanceConfig {
-  // IRProximity: reflective IR pair (e.g. LTE-4206 + LTR-4206) through a
+  // IRProximity: reflective IR pair (e.g. LTE-4206 + SFH 213) through a
   // comparator (LM393): a digital output that switches when an object is
   // within maxRange anywhere in a beam of half-angle halfFov.
   enum Kind { Ultrasonic, AnalogIR, IRProximity } kind = Ultrasonic;
