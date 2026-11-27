@@ -259,6 +259,31 @@ def calibrate(args):
             file.write(f"constexpr float trackMetres = {track/1000:.8f}f;\n")
 
 
+def heatmap(args):
+    from heatmap import pair_temperatures, plot, select, summary, transport_losses
+    rows, segments = select(read_csv(args.input), args.log_segment)
+    pairs = pair_temperatures(rows, args.max_gap_ms)
+    paired, dropped = summary(pairs)
+    total = paired + sum(dropped.values())
+    print(f"log segments {segments}: {total} temperature frames, {paired} paired with a pose, "
+          f"{total - paired} dropped")
+    for reason, count in dropped.most_common():
+        print(f"  dropped {count}: {reason}")
+    print(f"  plus {transport_losses(rows)} temperature frames lost before recording (sequence gaps)")
+    if args.pairs:
+        with open(args.pairs, "x", newline="", encoding="utf-8") as file:
+            writer = csv.writer(file)
+            writer.writerow(("log_segment", "env_robot_ms", "sample_robot_ms", "temp_c", "x_m", "y_m", "result"))
+            for p in pairs:
+                ok = p.result == "paired"
+                writer.writerow((p.segment, p.env_ms, "" if p.sample_ms != p.sample_ms else p.sample_ms,
+                                 p.temp if p.temp == p.temp else "",
+                                 round(p.x, 4) if ok else "", round(p.y, 4) if ok else "", p.result))
+    plot(rows, pairs, segments, args.output, args.cell, args.radius, args.max_gap_ms,
+         not args.points_only)
+    print(f"wrote {args.output}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -287,6 +312,17 @@ def main():
     cal = sub.add_parser("calibrate")
     cal.add_argument("input")
     cal.add_argument("--header", help="write an explicit build profile")
+    heat = sub.add_parser("heatmap", help="temperature samples paired to poses, as a PNG")
+    heat.add_argument("input")
+    heat.add_argument("--output", required=True, help="PNG to write")
+    heat.add_argument("--log-segment", type=int,
+                      help="map one log segment (default: all, if the robot clock shows no restart)")
+    heat.add_argument("--pairs", help="also write each frame's pairing result as a new CSV")
+    heat.add_argument("--max-gap-ms", type=int, default=250, help="largest pose spacing to interpolate")
+    heat.add_argument("--cell", type=float, default=0.05, help="interpolation cell size (m)")
+    heat.add_argument("--radius", type=float, default=0.12,
+                      help="cells further than this from every sample stay unknown (m)")
+    heat.add_argument("--points-only", action="store_true", help="draw measured samples only")
     mark = sub.add_parser("mark")
     mark.add_argument("input")
     mark.add_argument("markers")
@@ -295,8 +331,8 @@ def main():
     if args.command == "mark":
         write_csv(args.output, apply_marks(read_csv(args.input), read_csv(args.markers)))
     else:
-        {"record": record, "replay": replay, "compare": compare,
-         "verify": verify, "calibrate": calibrate}[args.command](args)
+        {"record": record, "replay": replay, "compare": compare, "verify": verify,
+         "calibrate": calibrate, "heatmap": heatmap}[args.command](args)
 
 
 if __name__ == "__main__":

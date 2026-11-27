@@ -218,6 +218,18 @@ FWSIM_SCENARIO(telemetry_live_course, "Paired live lap, with a lossy USB interva
   FWSIM_CHECK(sim, sim.serialContains(Remote, "@", 12500), "remote resumes forwarding after truncated lines");
 }
 
+FWSIM_SCENARIO(heatmap_reconnect_course, "Paired lap for the heat map: USB congestion, a reconnect and a manual restart") {
+  pairedTracker(sim);
+  sim.at(11500, [](Simulation& s) { s.board(Remote).usbWriteLimit = 7; }, "slow USB host");
+  sim.at(14500, [](Simulation& s) { s.board(Remote).usbWriteLimit = 64; }, "USB host caught up");
+  sim.linkLoss(20500, 22000);      // on the straight lower lane, still on the tape
+  sim.gesture(24500, GESTURE_UP);  // AUTO stays selected; restart is a separate UP
+  sim.runUntil(75000);
+  FWSIM_CHECK(sim, sim.steady(Robot, D8, LOW, 21000, 24450), "link loss stops the run until the next UP");
+  FWSIM_CHECK(sim, sim.serialContains(Robot, "nav stopped: finished"), "the restarted run reaches the finish");
+  FWSIM_CHECK(sim, sim.serialContains(Remote, "@", 25000), "telemetry resumes after reconnecting");
+}
+
 FWSIM_SCENARIO(telemetry_loaded_course, "Held-out three-cone course with loaded tyres and different encoder ratios") {
   pairedTracker(sim);
   loadedPlant(sim);

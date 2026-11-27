@@ -16,6 +16,7 @@ from calibrate_drive import estimate
 from telemetry import Sink, record
 from telemetry_wire import BIAS_READY, DETOUR, OFF_LINE, RUNNING, Stream, apply_marks, decode, read_csv
 from trajectory import Point, Reference, ground_errors, poses
+from heatmap import idw_grid, pair_temperatures, plot, select, summary, transport_losses
 
 
 def packet(seq, ms, epoch=1, session=11, flags=BIAS_READY, values=(0, 0, 0, 0)):
@@ -157,6 +158,73 @@ class RecorderTests(unittest.TestCase):
         cl, cr, ll, lr, track = estimate(rows)
         self.assertEqual((cl, cr, ll, lr), (-500, 600, 200, 200))
         self.assertAlmostEqual(track, 320/math.pi)
+
+
+
+def pose_row(seg, ms, x_mm, y_mm=0, flags=BIAS_READY, gap=0):
+    return dict(source="test", log_segment=seg, kind="pose", robot_ms=ms, x_mm=x_mm, y_mm=y_mm,
+                flags=flags, gap=gap)
+
+
+def env_row(seg, ms, temp="22.5", age="300", gap=0):
+    return dict(source="test", log_segment=seg, kind="env", robot_ms=ms, temp_c=temp,
+                temp_age_ms=age, gap=gap)
+
+
+class HeatmapTests(unittest.TestCase):
+    def test_pairs_on_robot_request_time_not_receive_time(self):
+        rows = [pose_row(1, ms, ms) for ms in range(0, 2001, 100)]  # 1 mm per robot ms
+        rows += [env_row(1, 1340, age="300"), env_row(1, 1800, age="0")]
+        a, b = pair_temperatures(rows)
+        self.assertEqual((a.result, a.sample_ms), ("paired", 1040))
+        self.assertAlmostEqual(a.x, 1.040)
+        self.assertAlmostEqual(b.x, 1.800)  # exact pose time
+
+    def test_reconnect_gap_and_missing_values_are_dropped(self):
+        rows = [pose_row(1, ms, ms) for ms in range(0, 1001, 100)]
+        # Segment 2 starts later; its first env request precedes its first pose.
+        rows += [pose_row(2, ms, ms) for ms in range(5000, 6001, 100)]
+        rows += [pose_row(2, 6500, 6500, gap=4), pose_row(2, 6600, 6600)]
+        rows += [env_row(2, 5100),             # request 4800: before segment 2 poses
+                 env_row(2, 6400),             # request 6100: poses 6000 and 6500, 4 lost
+                 env_row(2, 5900, temp=""),    # sensor read failed
+                 env_row(2, 5900, age=""),     # unknown conversion time
+                 env_row(1, 1500),             # request 1200: after last segment-1 pose
+                 env_row(3, 9000)]             # no pose in segment 3
+        results = [p.result for p in pair_temperatures(rows)]
+        self.assertEqual(results, ["before first pose of segment", "pose gap", "no valid temperature",
+                                   "no conversion time", "after last pose of segment",
+                                   "no pose in log segment"])
+        paired, dropped = summary(pair_temperatures(rows))
+        self.assertEqual((paired, sum(dropped.values())), (0, 6))
+
+    def test_invalid_pose_and_lost_frames(self):
+        rows = [pose_row(1, 0, 0, flags=0), pose_row(1, 100, 100)]
+        rows += [env_row(1, 350, age="300"), env_row(1, 2000, gap=2)]
+        self.assertEqual(pair_temperatures(rows)[0].result, "invalid pose / gyro bias not ready")
+        self.assertEqual(transport_losses(rows), 2)
+
+    def test_restart_between_segments_needs_explicit_choice(self):
+        rows = [pose_row(1, 9000, 0), pose_row(2, 500, 0)]  # robot clock went back
+        with self.assertRaises(ValueError):
+            select(rows)
+        self.assertEqual(select(rows, 2)[1], [2])
+        rows = [pose_row(1, 900, 0), pose_row(2, 1500, 0)]
+        self.assertEqual(select(rows)[1], [1, 2])
+
+    def test_unknown_cells_stay_empty_and_png_is_written(self):
+        grid, nx, ny = idw_grid([(0.0, 0.0, 20.0), (0.2, 0.0, 30.0)], (-0.05, 1.0, -0.05, 0.05),
+                                cell=0.1, radius=0.12)
+        self.assertEqual((nx, ny), (10, 1))
+        self.assertAlmostEqual(grid[0][0], 20.0, places=3)
+        self.assertTrue(20 < grid[0][1] < 30)
+        self.assertTrue(all(v != v for v in grid[0][4:]))  # NaN: no sample within radius
+        rows = [pose_row(1, ms, ms) for ms in range(0, 3001, 100)]
+        rows += [env_row(1, ms, temp=str(20 + ms / 1000)) for ms in (900, 1900, 2900)]
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "map.png"
+            plot(rows, pair_temperatures(rows), [1], out)
+            self.assertEqual(out.read_bytes()[:4], b"\x89PNG")
 
 
 if __name__ == "__main__":

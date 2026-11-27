@@ -99,6 +99,9 @@ if __name__ == "__main__":
     p = sub.add_parser("bench")
     p.add_argument("report_base", type=Path)
     p.add_argument("output", type=Path)
+    p = sub.add_parser("raw", help="all handheld USB records of one simulated run")
+    p.add_argument("report_base", type=Path)
+    p.add_argument("output", type=Path)
     p = sub.add_parser("lap")
     p.add_argument("report_base", type=Path)
     p.add_argument("run", choices=("teach", "live"))
@@ -106,5 +109,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.command == "bench":
         bench(args.report_base, args.output)
+    elif args.command == "raw":
+        write_csv(args.output, usb(args.report_base, "live"))
     else:
         lap(args.report_base, args.run, args.output)
