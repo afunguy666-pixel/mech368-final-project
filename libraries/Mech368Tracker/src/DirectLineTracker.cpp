@@ -1,5 +1,7 @@
 #include "DirectLineTracker.h"
+#include "DriveCalibration.h"
 #include <Arduino.h>
+#include <USB/PluggableUSBSerial.h>
 #include <Arduino_APDS9960.h>
 #include <Arduino_BMI270_BMM150.h>
 
@@ -7,6 +9,25 @@ namespace mech368 {
 using namespace line;
 
 namespace {
+// The normal Nano USB Serial.write may wait for a terminal indefinitely.
+// Stage one debug line, then make one best-effort CDC transfer.
+class DebugLine : public Print {
+ public:
+  size_t write(uint8_t c) override {
+    if (c == '\n') {
+      line_[size_++] = c;
+      uint32_t sent;
+      _SerialUSB.send_nb(line_, size_, &sent);
+      size_ = 0;
+    } else if (size_ < sizeof(line_) - 1) {
+      line_[size_++] = c;
+    }
+    return 1;
+  }
+ private:
+  uint8_t line_[64]; // one full-speed endpoint packet, reserve its newline
+  uint32_t size_ = 0;
+} debugLine;
 constexpr int kLeftIn1 = D4, kLeftIn2 = D5, kRightIn1 = D6, kRightIn2 = D7;
 constexpr int kSleep = D8, kFault = A6;
 constexpr int kLeftA = D2, kLeftB = D3, kRightA = D9, kRightB = D10;
@@ -16,17 +37,12 @@ constexpr float kLineY[] = {-0.030f, -0.010f, 0.010f, 0.030f};
 constexpr bool BLACK_IS_HIGH = true;
 constexpr int OBSTACLE_ACTIVE = LOW;
 constexpr uint16_t MIN_CAL_SPAN = 200;
-constexpr float kTrack = 0.092f, kRadius = 0.0325f;
+constexpr float kTrack = calibration::trackMetres;
 // The 14.9 mm caster spacer levels the chassis. A probe normal to the
 // clamp samples the floor directly below its centreline.
 constexpr float kSensorAhead = 0.07575f;
 constexpr float kTapeWidth = 0.050f, kMaxWheelSpeed = 0.45f;
-// Bench measurements pending: 300 channel-A pulses/rev, counted on both edges.
-constexpr float kCountsPerRev = 600.0f, kMotorTopSpeed = 0.95f;
-
-float wheelTravel(uint32_t count, uint32_t previous) {
-  return static_cast<int32_t>(count - previous) * (2.0f * kPi * kRadius / kCountsPerRev);
-}
+constexpr float kMotorTopSpeed = 0.95f;
 
 void readLine(uint16_t* raw) {
   for (int i = 0; i < 4; ++i) raw[i] = analogRead(kLinePins[i]);
@@ -41,6 +57,14 @@ void drive(int in1, int in2, float duty) {
   analogWrite(in2, duty >= 0 ? off : 255);
 }
 }  // namespace
+
+void DirectLineTracker::sampleInfrared(uint16_t* out) const {
+  if (active()) {
+    for (int i = 0; i < 4; ++i) out[i] = raw_[i];
+  } else {
+    readLine(out);
+  }
+}
 
 void DirectLineTracker::begin(void (*leftEncoderIsr)(), void (*rightEncoderIsr)()) {
   pinMode(kSleep, OUTPUT);
@@ -59,8 +83,8 @@ void DirectLineTracker::begin(void (*leftEncoderIsr)(), void (*rightEncoderIsr)(
   Serial.begin(115200);
   imuReady_ = IMU.begin();
   gestureReady_ = APDS.begin();
-  if (!imuReady_) Serial.println("IMU init failed");
-  if (!gestureReady_) Serial.println("APDS init failed");
+  if (!imuReady_) debugLine.println("IMU init failed");
+  if (!gestureReady_) debugLine.println("APDS init failed");
   sensors_.configure(4, kLineY);
   sensors_.blackIsHigh = BLACK_IS_HIGH;
   nav_.cfg.sensorAhead = kSensorAhead;
@@ -97,16 +121,24 @@ void DirectLineTracker::stop() {
   mode_ = Mode::Stopped;
 }
 
-void DirectLineTracker::start() {
-  if (active() || !motionPermitted_()) return;
+bool DirectLineTracker::startAllowed(const char* what) {
+  if (active() || !motionPermitted_()) return false;
   if (digitalRead(kFault) == LOW) {
-    Serial.println("DRV8833 FAULT: start inhibited");
-    return;
+    debugLine.print("DRV8833 FAULT: ");
+    debugLine.print(what);
+    debugLine.println(" inhibited");
+    return false;
   }
   if (!gyroBias_.ready(50)) {
-    Serial.println("gesture UP ignored: gyro bias not measured yet, keep still");
-    return;
+    debugLine.print(what);
+    debugLine.println(" ignored: gyro bias not measured yet, keep still");
+    return false;
   }
+  return true;
+}
+
+bool DirectLineTracker::start() {
+  if (!startAllowed("start")) return false;
   if (calibrated_) {
     startNavigation();
   } else {
@@ -119,8 +151,23 @@ void DirectLineTracker::start() {
       haveCalStart_ = true;
     }
     mode_ = Mode::Calibrating;
-    Serial.println("gesture UP: calibrating line sensors");
+    debugLine.println("gesture UP: calibrating line sensors");
   }
+  return true;
+}
+
+bool DirectLineTracker::startManual() {
+  if (!startAllowed("manual start")) return false;
+  manualCmd_ = Twist();
+  mode_ = Mode::Manual;
+  debugLine.println("manual: driving from handheld tilt");
+  return true;
+}
+
+void DirectLineTracker::log(const char* text) { debugLine.println(text); }
+
+bool DirectLineTracker::navFault() const {
+  return mode_ == Mode::Stopped && (nav_.state() == NavState::Lost || nav_.state() == NavState::Blocked);
 }
 
 void DirectLineTracker::startNavigation() {
@@ -133,11 +180,11 @@ void DirectLineTracker::startNavigation() {
   in.distance = odometry_.distance();
   nav_.start(in);
   mode_ = Mode::Running;
-  Serial.print("nav: ");
-  Serial.print(navStateName(nav_.state()));
-  Serial.print(" (");
-  Serial.print(nav_.reason());
-  Serial.println(")");
+  debugLine.print("nav: ");
+  debugLine.print(navStateName(nav_.state()));
+  debugLine.print(" (");
+  debugLine.print(nav_.reason());
+  debugLine.println(")");
 }
 
 Twist DirectLineTracker::calibrate(const uint16_t* raw) {
@@ -145,23 +192,23 @@ Twist DirectLineTracker::calibrate(const uint16_t* raw) {
   const float angles[] = {degToRad(40), degToRad(-40), 0};
   const float error = wrapAngle(calStart_ + angles[calPhase_] - heading_);
   if (fabsf(error) < degToRad(2) && ++calPhase_ == 3) {
-    Serial.print("calibration min/max:");
+    debugLine.print("calibration min/max:");
     for (int i = 0; i < 4; ++i) {
-      Serial.print(' ');
-      Serial.print(sensors_.calibrationMin(i));
-      Serial.print('/');
-      Serial.print(sensors_.calibrationMax(i));
+      debugLine.print(' ');
+      debugLine.print(sensors_.calibrationMin(i));
+      debugLine.print('/');
+      debugLine.print(sensors_.calibrationMax(i));
     }
-    Serial.println();
+    debugLine.println();
     haveCalStart_ = false;
     calibrated_ = sensors_.calibrationValid(MIN_CAL_SPAN);
     if (calibrated_) {
       startNavigation();
       if (reading_.value[1] + reading_.value[2] < reading_.value[0] + reading_.value[3])
-        Serial.println("warning: inner sensors read lighter than outer - check sensor polarity");
+        debugLine.println("warning: inner sensors read lighter than outer - check sensor polarity");
     } else {
       stop();
-      Serial.println("calibration FAILED: a sensor never saw both tape and floor");
+      debugLine.println("calibration FAILED: a sensor never saw both tape and floor");
     }
     return Twist();
   }
@@ -171,13 +218,13 @@ Twist DirectLineTracker::calibrate(const uint16_t* raw) {
 }
 
 void DirectLineTracker::printPose() {
-  Serial.print(" at (");
-  Serial.print(odometry_.pose().x, 3);
-  Serial.print(", ");
-  Serial.print(odometry_.pose().y, 3);
-  Serial.print(") m, heading ");
-  Serial.print(radToDeg(heading_), 1);
-  Serial.println(" deg");
+  debugLine.print(" at (");
+  debugLine.print(odometry_.pose().x, 3);
+  debugLine.print(", ");
+  debugLine.print(odometry_.pose().y, 3);
+  debugLine.print(") m, heading ");
+  debugLine.print(radToDeg(heading_), 1);
+  debugLine.println(" deg");
 }
 
 Twist DirectLineTracker::navigate(const uint16_t* raw, float dt) {
@@ -196,21 +243,21 @@ Twist DirectLineTracker::navigate(const uint16_t* raw, float dt) {
     mode_ = Mode::Stopped;
   }
   if (previous != nav_.transitions()) {
-    Serial.print("nav: ");
-    Serial.print(navStateName(nav_.state()));
-    Serial.print(" (");
-    Serial.print(nav_.reason());
-    Serial.print(")");
+    debugLine.print("nav: ");
+    debugLine.print(navStateName(nav_.state()));
+    debugLine.print(" (");
+    debugLine.print(nav_.reason());
+    debugLine.print(")");
     printPose();
   }
   if (mode_ == Mode::Stopped) {
-    Serial.print("nav stopped: ");
-    Serial.print(navStateName(nav_.state()));
-    Serial.print(", ");
-    Serial.print(nav_.corners());
-    Serial.print(" corners, ");
-    Serial.print(nav_.detours());
-    Serial.println(" detours");
+    debugLine.print("nav stopped: ");
+    debugLine.print(navStateName(nav_.state()));
+    debugLine.print(", ");
+    debugLine.print(nav_.corners());
+    debugLine.print(" corners, ");
+    debugLine.print(nav_.detours());
+    debugLine.println(" detours");
     return Twist();
   }
   return cmd;
@@ -218,8 +265,8 @@ Twist DirectLineTracker::navigate(const uint16_t* raw, float dt) {
 
 void DirectLineTracker::updateDrive(uint32_t now, uint32_t left, uint32_t right) {
   const float dt = (now - lastSpeed_) / 1000.0f;
-  const float vl = wheelTravel(left, speedLeft_) / dt;
-  const float vr = wheelTravel(right, speedRight_) / dt;
+  const float vl = calibration::left.travel(left, speedLeft_) / dt;
+  const float vr = calibration::right.travel(right, speedRight_) / dt;
   speedLeft_ = left;
   speedRight_ = right;
   lastSpeed_ = now;
@@ -231,7 +278,7 @@ void DirectLineTracker::updateDrive(uint32_t now, uint32_t left, uint32_t right)
   }
   if (digitalRead(kFault) == LOW) {
     stop();
-    Serial.println("DRV8833 FAULT: outputs disabled");
+    debugLine.println("DRV8833 FAULT: outputs disabled");
     return;
   }
   drive(kLeftIn1, kLeftIn2, leftPI_.update(targets_.left, vl, dt));
@@ -249,8 +296,15 @@ void DirectLineTracker::update() {
     const uint32_t us = micros();
     const float dt = (us - lastGyroUs_) / 1e6f;
     lastGyroUs_ = us;
-    if (mode_ == Mode::Waiting) gyroBias_.add(gz);
-    else heading_ = wrapAngle(heading_ + degToRad((gz - gyroBias_.bias()) * dt));
+    if (!gyroBias_.ready(50)) {
+      const uint32_t l = leftCount_, r = rightCount_;
+      if (l != biasLeft_ || r != biasRight_ || fabsf(gz) > 5.0f) gyroBias_.reset();
+      else gyroBias_.add(gz);
+      biasLeft_ = l;
+      biasRight_ = r;
+    } else {
+      heading_ = wrapAngle(heading_ + degToRad((gz - gyroBias_.bias()) * dt));
+    }
   }
   const uint32_t now = millis();
   if (now - lastTick_ < 5) return;
@@ -259,27 +313,29 @@ void DirectLineTracker::update() {
   noInterrupts();
   const uint32_t left = leftCount_, right = rightCount_;
   interrupts();
-  odometry_.updateWithGyro(wheelTravel(left, tickLeft_), wheelTravel(right, tickRight_),
+  odometry_.updateWithGyro(calibration::left.travel(left, tickLeft_), calibration::right.travel(right, tickRight_),
                            wrapAngle(heading_ - tickHeading_));
   tickLeft_ = left;
   tickRight_ = right;
   tickHeading_ = heading_;
   if (active()) {
-    uint16_t raw[4];
-    readLine(raw);
-    const Twist cmd = mode_ == Mode::Calibrating ? calibrate(raw) : navigate(raw, dt);
+    readLine(raw_);
+    const Twist cmd = mode_ == Mode::Calibrating ? calibrate(raw_)
+                      : mode_ == Mode::Manual ? manualCmd_ : navigate(raw_, dt);
     targets_ = toWheels(limitTwist(cmd, kTrack, kMaxWheelSpeed), kTrack);
   }
   if (now - lastSpeed_ >= 10) updateDrive(now, left, right);
-  digitalWrite(LEDG, mode_ == Mode::Running ? LOW : HIGH);
-  digitalWrite(LEDB, mode_ == Mode::Waiting || mode_ == Mode::Calibrating ? LOW : HIGH);
-  digitalWrite(LEDR, mode_ == Mode::Stopped && nav_.state() != NavState::Finished ? LOW : HIGH);
+  if (ownLeds) {
+    digitalWrite(LEDG, mode_ == Mode::Running ? LOW : HIGH);
+    digitalWrite(LEDB, mode_ == Mode::Waiting || mode_ == Mode::Calibrating ? LOW : HIGH);
+    digitalWrite(LEDR, mode_ == Mode::Stopped && nav_.state() != NavState::Finished ? LOW : HIGH);
+  }
   if (mode_ == Mode::Running && now - lastReport_ >= 1000) {
     lastReport_ = now;
-    Serial.print(navStateName(nav_.state()));
-    Serial.print(" line=");
-    Serial.print(reading_.onLine ? reading_.position * 100.0f : NAN, 1);
-    Serial.print(" cm");
+    debugLine.print(navStateName(nav_.state()));
+    debugLine.print(" line=");
+    debugLine.print(reading_.onLine ? reading_.position * 100.0f : NAN, 1);
+    debugLine.print(" cm");
     printPose();
   }
 }

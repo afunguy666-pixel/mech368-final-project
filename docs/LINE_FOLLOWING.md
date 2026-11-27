@@ -40,7 +40,7 @@ The measurements come from the default configuration of `Car/寻线小车装配�
 | Line sensor clamp | 71 mm across and 16.4 mm fore–aft at the mounting pads. The pads are 4.8 mm thick and their lower face is 5.5 mm above the floor. |
 | Line probe mounting height | The nominal low point of each lens sits 5.0 mm above the floor and projects 0.5 mm below the clamp. |
 | Four line spots | The simulator samples directly below each pair's midpoint, 75.75 mm ahead of the axle at y = −30, −10, +10 and +30 mm (A0 to A3). |
-| Obstacle sensing | The nominal LTE-4206 / LTR-4206 lens tips sit 78.25 mm ahead of the axle at y = ±20.00 mm. On each side the emitter is 28.25 mm above the floor and the receiver is 21.75 mm above it. |
+| Obstacle sensing | Each side pairs an LTE-4206 emitter (3 mm, upper) with an SFH 213 PIN photodiode receiver (5 mm, lower). The nominal lens tips sit 78.25 mm ahead of the axle at y = ±20.00 mm; the emitter is 28.25 mm above the floor and the receiver 21.75 mm. These positions come from the CAD drawn for 3 mm parts and must be rechecked once the receiver bore is opened for the 5 mm SFH 213. |
 | Obstacle bore axes | Both pairs point straight ahead at 0.00° yaw and pitch relative to the chassis. The left (D12) and right (D11) axes are 40.00 mm apart. |
 | Collision check | 150 mm diameter circle centred 15.25 mm ahead of the axle. The projected CAD parts span a circle of about 149.6 mm diameter around that centre. |
 
@@ -50,8 +50,9 @@ The centre of each shroud opening is 7.05 mm ahead of its seating shoulder. Both
 
 ## Sensor hardware
 
-Kit parts: LTE-4206 (IR emitter), LTR-4206 (IR phototransistor), LM393 (dual
-comparator).
+Parts: LTE-4206 (940 nm IR emitter, 3 mm, 20°), LTR-4206 (IR phototransistor, line array),
+SFH 213 (silicon PIN photodiode, 5 mm, about ±10° half sensitivity, obstacle receivers),
+LM393 (dual comparator).
 
 **Line array: 4 sensors read as analog voltages.** Phototransistor emitter to GND, collector to an
 analog pin with a pull-up resistor to **3.3 V** (start with 10-47 kOhm and
@@ -77,10 +78,22 @@ machine). An array whose outer sensors sit more than one tape width (plus the
 sensor spot) from the opposite inner sensor would not need it, for example
 +-15/+-45 mm. That is wider than the CAD frame allows.
 
-**Obstacle pair:** two forward-facing LTE/LTR pairs at ±20 mm on the front frame. Set the LM393
-threshold for a detection distance of 6–8 cm on a cone
-(handout Figure 5). Output LOW = object (`OBSTACLE_ACTIVE`). Keep the range
+**Obstacle pair:** on each side of the front frame (±20 mm) an LTE-4206 emitter sits above an
+SFH 213 photodiode, both facing straight ahead. Set the LM393 threshold for a detection distance
+of 6–8 cm on a cone (handout Figure 5). Output LOW = object (`OBSTACLE_ACTIVE`). Keep the range
 short: at the end of the track the border wall must not trigger a detour.
+
+The SFH 213 is a photodiode, not a phototransistor: it has no current gain, so a reflection gives
+only microamps. Wire it with the anode to GND and the cathode to the comparator input, with a
+pull-up to **3.3 V** (reverse biased). More light pulls the input down, the same polarity as the old
+phototransistor, so the firmware and `OBSTACLE_ACTIVE = LOW` are unchanged. The pull-up must be far
+larger than the 10–47 kOhm used for phototransistors: start at 220 kOhm and try 100 kOhm–1 MOhm
+(to be measured). If the LM393 runs from 3.3 V its input common-mode range ends about 1.5 V below
+the supply, so keep the threshold below about 1.8 V. The clear SFH 213 responds from 400 to
+1100 nm and sees room light as well as the emitter: shroud it, and check with the emitter
+unplugged that lab lighting never pulls the output LOW. (SFH 213 FA has a daylight filter.)
+The 5 mm body does not fit the 3.45 / 4.50 mm bore of the 3 mm CAD; open the receiver bore for a
+5 mm body and 5.8 mm flange and recheck the lens tip position.
 
 Ambient IR from lamps and sunlight shifts the readings: calibrate in the lab
 where the demo runs, and shield the sensors from the side.

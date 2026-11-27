@@ -497,6 +497,10 @@ void Vehicle::step() {
   };
   omegaL += (target(dutyL) - omegaL) * alpha;
   omegaR += (target(dutyR) - omegaR) * alpha;
+  if (handRolled && dutyL == 0 && dutyR == 0) {
+    omegaL = handOmegaL;
+    omegaR = handOmegaR;
+  }
   const uint64_t t0 = timeUs;
   thetaL += omegaL * dt;
   thetaR += omegaR * dt;

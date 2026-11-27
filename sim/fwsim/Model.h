@@ -68,7 +68,7 @@ struct LineSensorConfig {
   double spot = 0.004;                  // sensing spot radius (m)
 };
 struct DistanceConfig {
-  // IRProximity: reflective IR pair (e.g. LTE-4206 + LTR-4206) through a
+  // IRProximity: reflective IR pair (e.g. LTE-4206 + SFH 213) through a
   // comparator (LM393): a digital output that switches when an object is
   // within maxRange anywhere in a beam of half-angle halfFov.
   enum Kind { Ultrasonic, AnalogIR, IRProximity } kind = Ultrasonic;
@@ -134,6 +134,9 @@ class Vehicle : public ScriptedIO {
 
   Pose2 pose;
   double omegaL = 0, omegaR = 0;   // wheel rad/s
+  // External rollers for the unpowered measurement fixture, rad/s.
+  bool handRolled = false;
+  double handOmegaL = 0, handOmegaR = 0;
   double thetaL = 0, thetaR = 0;   // wheel angle, rad
   double dutyL = 0, dutyR = 0;     // signed motor command -1..1
   double speed = 0, yawRate = 0, accel = 0;

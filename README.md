@@ -9,6 +9,12 @@ serial to request an E-stop. With a fresh link, swipe UP on the car to calibrate
 and start. After an E-stop, any new swipe on the car clears the latch. Wait for
 a fresh heartbeat and swipe UP to drive. DOWN stops active navigation locally.
 
+The remote forwards 10 Hz pose telemetry to a receive-only Windows recorder. An
+optional normally-open handheld stop button connects D2 to ground. Build the
+paired sketches with the project compile script for credit-aware BLE writes.
+[Recorder, teach/live examples and bench results (Chinese)](docs/TELEMETRY.zh-CN.md)
+· [Tilt steering, low-battery LED and heat map (Chinese)](docs/GESTURE_BATTERY_HEATMAP.zh-CN.md)
+
 See [BLE protocol and bench checklist](docs/BLE_PROTOCOL.md) for the exact wire
 format, timing, setup API blocking limitations and unperformed hardware tests.
 
@@ -32,8 +38,8 @@ bash scripts/test-host.sh
 
 # Requires Arduino CLI 1.3.1 on PATH (same toolchain CI uses).
 arduino-cli core update-index
-arduino-cli core install arduino:mbed_nano@4.4.1
-arduino-cli lib install ArduinoBLE@1.4.1 Arduino_APDS9960@1.0.4 Arduino_BMI270_BMM150@1.2.4
+arduino-cli core install arduino:mbed_nano@4.6.0
+arduino-cli lib install ArduinoBLE@2.1.1 Arduino_APDS9960@1.0.4 Arduino_BMI270_BMM150@1.2.4
 bash scripts/compile-firmware.sh
 ```
 

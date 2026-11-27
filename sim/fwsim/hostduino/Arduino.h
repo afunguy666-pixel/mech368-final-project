@@ -5,6 +5,7 @@
 // authority on what compiles for the Nano 33 BLE Sense Rev2.
 #ifndef FWSIM_ARDUINO_H
 #define FWSIM_ARDUINO_H
+#define MECH368_TRACE_ACCEPTED
 
 #include <stddef.h>
 #include <stdint.h>
@@ -214,6 +215,7 @@ class HardwareSerialHost : public Stream {
   int available() override;
   int read() override;
   int peek() override;
+  void send_nb(uint8_t* buffer, uint32_t size, uint32_t* actual);
   size_t write(uint8_t c) override;
   using Print::write;
 };

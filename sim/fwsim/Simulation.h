@@ -64,6 +64,9 @@ struct FrameRecord {
   bool fromRemote = false;  // command (remote -> robot) or status
   RadioPacket::Fate fate = RadioPacket::Delivered;
   bool decoded = false;
+  uint8_t telemetryKind = 0;
+  uint16_t telemetrySequence = 0;
+  uint32_t sampleMs = 0;
   mech368::ble::Frame frame;
   bool delivered() const { return fate == RadioPacket::Delivered || fate == RadioPacket::Corrupted; }
 };

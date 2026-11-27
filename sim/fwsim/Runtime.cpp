@@ -4,6 +4,8 @@
 #include <Arduino_APDS9960.h>
 #include <Arduino_BMI270_BMM150.h>
 #include <Arduino_HS300x.h>
+#include <Wire.h>
+#include <utility/HCI.h>
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -426,6 +428,33 @@ float Stream::parseFloat() {
 }
 
 HardwareSerialHost Serial;
+HostHci HCI;
+int HostHci::availableAclPackets() const { return cur().aclCredits; }
+void HardwareSerialHost::send_nb(uint8_t* buffer, uint32_t size, uint32_t* actual) {
+  Board& b = cur();
+  *actual = b.usbAttached ? std::min(size, static_cast<uint32_t>(b.usbWriteLimit)) : 0;
+  for (uint32_t i = 0; i < *actual; ++i) write(buffer[i]);
+}
+
+HostSensorWire Wire1;
+int HostSensorWire::endTransmission() {
+  Board& b = cur();
+  b.spend(50);
+  if (address_ != 0x44 || !b.io) return 1;
+  double c = 0;
+  if (!b.io->temperature(b, c)) return 1;
+  const int encoded = static_cast<int>(std::lround((c + 40) * 16383 / 165)) << 2;
+  data_[2] = static_cast<uint8_t>(encoded >> 8);
+  data_[3] = static_cast<uint8_t>(encoded);
+  readyAt_ = b.now() + 35000;
+  return 0;
+}
+int HostSensorWire::requestFrom(int address, int length) {
+  cur().spend(100);
+  index_ = 0;
+  return address == address_ && length == 4 && cur().now() >= readyAt_ ? 4 : 0;
+}
+int HostSensorWire::read() { return index_ < 4 ? data_[index_++] : -1; }
 int HardwareSerialHost::available() {
   Board& b = cur();
   b.spend(b.timeCallUs);
@@ -475,9 +504,10 @@ fwsim::ImuSample imuSample(Board& b) {
 }
 }  // namespace
 
-int BoschSensorClass::begin() { cur().spend(2000); return 1; }
+int BoschSensorClass::begin() { cur().spend(2000); return cur().imuBeginFails ? 0 : 1; }
 int BoschSensorClass::accelerationAvailable() {
   Board& b = cur(); b.spend(b.ioCallUs);
+  if (b.imuFrozen) return 0;
   return newSample(imuState()[b.id].accel, b.now(), accelerationSampleRate());
 }
 int BoschSensorClass::gyroscopeAvailable() {

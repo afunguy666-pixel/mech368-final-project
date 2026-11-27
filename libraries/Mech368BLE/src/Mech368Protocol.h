@@ -153,14 +153,20 @@ class RemoteLink {
     }
     return true;
   }
-  Frame command(bool stop) const {
+  // linear mm/s, angular mrad/s, clamped to the protocol bound. A Stop
+  // always carries zero motion.
+  Frame command(bool stop, int16_t linear = 0, int16_t angular = 0) const {
     Frame f; f.type = stop ? Type::Stop : Type::Motion;
     f.sequence = nextSequence_; f.session = session_; f.challenge = challenge_;
-    // Zero-motion bench heartbeat only. IMU mapping is deliberately not implemented.
+    if (!stop) {
+      f.linear = linear < -kMaxLinear ? -kMaxLinear : (linear > kMaxLinear ? kMaxLinear : linear);
+      f.angular = angular < -kMaxAngular ? -kMaxAngular : (angular > kMaxAngular ? kMaxAngular : angular);
+    }
     return f;
   }
   void sent(bool stop = false) { sent_ = true; sentStop_ = stop; sentSequence_ = nextSequence_++; }
   bool ready() const { return session_ != 0; }
+  uint32_t session() const { return session_; }
   bool healthy(uint32_t now) const {
     return ack_ && static_cast<uint32_t>(now - ackAt_) < MotionSafety::kTimeoutMs;
   }

@@ -24,8 +24,22 @@ void pairedTracker(Simulation& sim) {
   sim.loadVehicle("sim/vehicles/ir_tracker.vehicle");
   sim.useSketch(Robot, "robot");
   sim.useSketch(Remote, "remote", 300);
-  sim.gesture(800, GESTURE_UP);  // still no valid heartbeat
+  sim.gesture(800, GESTURE_UP);     // nothing selected, no valid heartbeat
+  sim.gesture(3000, GESTURE_RIGHT); // select AUTO; selecting never starts
   sim.gesture(3500, GESTURE_UP);
+}
+
+// Same plant for calibration and the held-out course. The estimator never
+// receives these plant constants. The bench CSV comes from USB counts and a
+// wheel index / chassis ruler / protractor in the model's world frame.
+void loadedPlant(Simulation& sim) {
+  auto& v = sim.vehicleConfig();
+  v.leftScale = 0.955;
+  v.rightScale = 0.975;
+  v.trackWidth = 0.095;
+  v.encLeft.ppr = 304;
+  v.encRight.ppr = 298;
+  v.gyroBiasDps = 0.65;
 }
 
 double closestApproach(const Simulation& sim, Vec2 p, double fromMs = 0) {
@@ -49,6 +63,21 @@ double speedAt(const Simulation& sim, double ms) {
       return std::hypot(s[i].pose.x - s[i - 1].pose.x, s[i].pose.y - s[i - 1].pose.y) / dt;
     }
   return 0;
+}
+
+void checkDriveDeadline(Simulation& sim, double faultMs, double lastPossibleMs) {
+  double accepted = -1, disabled = -1;
+  for (const auto& pin : sim.board(Robot).pinLog) {
+    if (pin.pin == D0 && pin.t <= lastPossibleMs * 1000) accepted = pin.t / 1000.0;
+    if (pin.pin == D8 && !pin.value && pin.t >= faultMs * 1000 && disabled < 0)
+      disabled = pin.t / 1000.0;
+  }
+  char timing[150];
+  std::snprintf(timing, sizeof timing, "last accepted motion %.3f ms, D8 low %.3f ms, elapsed %.3f ms",
+                accepted, disabled, disabled - accepted);
+  sim.log("check", timing);
+  FWSIM_CHECK(sim, accepted > faultMs - 150 && sim.levelAt(Robot, D8, accepted) == HIGH &&
+              disabled >= accepted && disabled - accepted <= 500, "accepted motion to nSLEEP within 500 ms");
 }
 
 // Largest sensor-bar offset from the line while the sketch reports "follow".
@@ -181,6 +210,111 @@ FWSIM_SCENARIO(robot_track_cones, "Paired firmware: follow the direct-wired thre
   FWSIM_CHECK(sim, finished && (finished->frame.linear & wire::OutputsDisabled), "BLE reports sleeping outputs at the finish");
 }
 
+FWSIM_SCENARIO(telemetry_live_course, "Paired live lap, with a lossy USB interval for comparison") {
+  pairedTracker(sim);
+  sim.at(11500, [](Simulation& s) { s.board(Remote).usbWriteLimit = 7; }, "slow USB host");
+  sim.at(12100, [](Simulation& s) { s.board(Remote).usbWriteLimit = 64; }, "USB host caught up");
+  runCourse(sim, true);
+  FWSIM_CHECK(sim, sim.serialContains(Remote, "@", 12500), "remote resumes forwarding after truncated lines");
+}
+
+FWSIM_SCENARIO(heatmap_reconnect_course, "Paired lap for the heat map: USB congestion, a reconnect and a manual restart") {
+  pairedTracker(sim);
+  sim.at(11500, [](Simulation& s) { s.board(Remote).usbWriteLimit = 7; }, "slow USB host");
+  sim.at(14500, [](Simulation& s) { s.board(Remote).usbWriteLimit = 64; }, "USB host caught up");
+  sim.linkLoss(20500, 22000);      // on the straight lower lane, still on the tape
+  sim.gesture(24500, GESTURE_UP);  // AUTO stays selected; restart is a separate UP
+  sim.runUntil(75000);
+  FWSIM_CHECK(sim, sim.steady(Robot, D8, LOW, 21000, 24450), "link loss stops the run until the next UP");
+  FWSIM_CHECK(sim, sim.serialContains(Robot, "nav stopped: finished"), "the restarted run reaches the finish");
+  FWSIM_CHECK(sim, sim.serialContains(Remote, "@", 25000), "telemetry resumes after reconnecting");
+}
+
+FWSIM_SCENARIO(telemetry_loaded_course, "Held-out three-cone course with loaded tyres and different encoder ratios") {
+  pairedTracker(sim);
+  loadedPlant(sim);
+  runCourse(sim, true);
+}
+
+FWSIM_SCENARIO(telemetry_bench, "Passive wheel index, loaded ruler and protractor with the bridge asleep") {
+  sim.loadWorld("sim/worlds/course.world");
+  sim.loadVehicle("sim/vehicles/ir_tracker.vehicle");
+  loadedPlant(sim);
+  auto& w = sim.world();
+  w.width = w.height = 20;
+  w.start = {10, 10, 0};
+  w.circles.clear();
+  sim.useSketch(Robot, "robot");
+  sim.useSketch(Remote, "remote", 300);
+  sim.at(0, [](Simulation& s) { s.vehicle().handRolled = true; });
+  auto roll = [&](double ms, double left, double right) {
+    sim.at(ms, [left, right](Simulation& s) {
+      s.vehicle().handOmegaL = left;
+      s.vehicle().handOmegaR = right;
+    });
+  };
+  const auto& v = sim.vehicleConfig();
+  const double l = v.wheelRadius * v.leftScale, r = v.wheelRadius * v.rightScale;
+  const double turn = 2 * std::acos(-1.0);
+  roll(3000, turn, 0); roll(5000, 0, 0);       // two marked left wheel turns
+  roll(7500, 0, turn); roll(9500, 0, 0);       // two marked right wheel turns
+  roll(12000, 0.20/l, 0.20/r); roll(16000, 0, 0);
+  roll(18500, -0.05/l, 0.05/r); roll(22500, 0, 0);
+  roll(25000, 0.05/l, -0.05/r); roll(29000, 0, 0);
+  sim.runUntil(31500);
+  FWSIM_CHECK(sim, sim.steady(Robot, D8, LOW, 100, 31500), "all bench measurements passive, motor bridge asleep");
+  FWSIM_CHECK(sim, sim.serialContains(Remote, "@", 30000), "includes final encoder plateau on handheld USB");
+}
+
+FWSIM_SCENARIO(telemetry_pressure, "USB unplug, full endpoint and reserved radio credit under motion and E-stop") {
+  pairedTracker(sim);
+  sim.at(6500, [](Simulation& s) { s.board(Remote).usbAttached = false; }, "unplug USB, remote separately powered");
+  sim.at(7500, [](Simulation& s) { s.board(Remote).usbAttached = true; s.board(Remote).usbWriteLimit = 0; }, "USB attached, host does not read");
+  sim.at(8200, [](Simulation& s) { s.board(Robot).aclCredits = 1; }, "only the control credit remains");
+  sim.setInput(Remote, 8800, D2, LOW);
+  sim.setInput(Remote, 9000, D2, HIGH);
+  sim.linkLoss(9500, 11000);
+  sim.at(11200, [](Simulation& s) { s.board(Remote).usbWriteLimit = 64; s.board(Robot).aclCredits = 4; });
+  sim.runUntil(16000);
+  int linesBefore = 0, during = 0, after = 0;
+  for (const auto& line : sim.board(Remote).serialOut) {
+    if (line.text.empty() || line.text.front() != '@') continue;
+    if (line.t < 6500000) ++linesBefore;
+    else if (line.t < 11200000) ++during;
+    else ++after;
+  }
+  FWSIM_CHECK(sim, linesBefore > 20 && !during && after > 10, "lossy USB drops telemetry and resumes");
+  int telemetryWrites = 0, statusWrites = 0;
+  for (const auto& frame : sim.frames()) {
+    if (frame.sentUs < 8210000 || frame.sentUs > 8750000) continue;
+    if (frame.telemetryKind) ++telemetryWrites;
+    if (frame.decoded && frame.frame.type == wire::Type::Status) ++statusWrites;
+  }
+  FWSIM_CHECK(sim, !telemetryWrites && statusWrites >= 9, "the last ACL credit is used only for control");
+  FWSIM_CHECK(sim, sim.steady(Robot, D8, HIGH, 6600, 8750) &&
+              sim.steady(Remote, LED_BUILTIN, HIGH, 6600, 8750), "drive and heartbeat survive unplug and congestion");
+  const auto* last = sim.statusSentBefore(15700);
+  FWSIM_CHECK(sim, last && (last->frame.linear & wire::EstopLatched) &&
+              sim.steady(Robot, D8, LOW, 8970, 16000), "remote stop cuts drive and stays latched after reconnect");
+}
+
+FWSIM_SCENARIO(telemetry_deadline, "No controller credits during calibration, measure accepted heartbeat to nSLEEP") {
+  pairedTracker(sim);
+  sim.at(4050, [](Simulation& s) { s.board(Robot).aclCredits = 0; }, "controller TX full");
+  sim.at(6500, [](Simulation& s) { s.board(Robot).aclCredits = 4; }, "credits restored");
+  sim.runUntil(10000);
+  checkDriveDeadline(sim, 4050, 4700);
+  FWSIM_CHECK(sim, sim.steady(Robot, D8, LOW, 4600, 10000), "no spontaneous start as heartbeats resume");
+}
+
+FWSIM_SCENARIO(telemetry_usb_power_loss, "Unplug the only supply to the handheld on a moving run") {
+  pairedTracker(sim);
+  sim.powerOff(Remote, 8000);
+  sim.runUntil(12000);
+  checkDriveDeadline(sim, 8000, 8600);
+  FWSIM_CHECK(sim, sim.steady(Robot, D8, LOW, 8500, 12000), "unpowered remote cannot keep motors enabled");
+}
+
 FWSIM_SCENARIO(robot_track_watchdog, "Paired firmware: heartbeat loss drops nSLEEP and cancels navigation") {
   pairedTracker(sim);
   sim.block(true, 8000, 10000);
@@ -189,6 +323,7 @@ FWSIM_SCENARIO(robot_track_watchdog, "Paired firmware: heartbeat loss drops nSLE
   sim.setInput(Robot, 14100, A6, LOW);
   sim.setInput(Robot, 14300, A6, HIGH);
   sim.runUntil(14600);
+  checkDriveDeadline(sim, 8000, 8900);
   const double last = sim.lastCommandDelivered(8900);
   double disabled = -1;
   for (const auto& pin : sim.board(Robot).pinLog) {

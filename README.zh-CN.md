@@ -6,8 +6,12 @@
 
 直连版小车用 A0–A3 读取四路巡线，两路 LM393 检测锥桶，DRV8833 驱动电机。
 两块 Nano 33 BLE Sense Rev2 分别运行 `firmware/robot` 和 `firmware/remote`。
-遥控器持续发送心跳，在遥控器 USB 串口输入 `e` 可急停。链路正常时，在车上向上挥手可标定并启动。
+遥控器持续发送心跳，在遥控器 USB 串口输入 `e` 可急停。链路正常时，在车上右挥选 AUTO（左挥选 MANUAL 倾斜遥控），再向上挥手启动。
 急停后，在车上向任一方向挥手可解除锁存。收到新的心跳后再向上挥手，小车才重新启动。行驶中向下挥手可在车上停车。
+
+遥控器转发 10 Hz 位姿，Windows 工具可记录、回放和对比 teach/live 两趟，并保留掉包与重连分段。遥控器 D2 对地的常开按钮可在 USB 拔除时发急停。构建双板请用项目编译脚本。[运行命令、仿真结果与独立标定对照](docs/TELEMETRY.zh-CN.md)
+
+倾斜遥控、低电量灯和温度热图的操作与待实测项见 [docs/GESTURE_BATTERY_HEATMAP.zh-CN.md](docs/GESTURE_BATTERY_HEATMAP.zh-CN.md)。
 
 报文的精确格式、时序、初始化 API 的阻塞限制以及尚未完成的硬件测试，见
 [BLE 协议与台架检查清单](docs/BLE_PROTOCOL.zh-CN.md)。
@@ -32,8 +36,8 @@ bash scripts/test-host.sh
 
 # 需要 PATH 中有 Arduino CLI 1.3.1（与 CI 使用的工具链相同）。
 arduino-cli core update-index
-arduino-cli core install arduino:mbed_nano@4.4.1
-arduino-cli lib install ArduinoBLE@1.4.1 Arduino_APDS9960@1.0.4 Arduino_BMI270_BMM150@1.2.4
+arduino-cli core install arduino:mbed_nano@4.6.0
+arduino-cli lib install ArduinoBLE@2.1.1 Arduino_APDS9960@1.0.4 Arduino_BMI270_BMM150@1.2.4
 bash scripts/compile-firmware.sh
 ```
 

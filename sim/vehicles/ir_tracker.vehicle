@@ -27,9 +27,11 @@ line_sensor r_out pin=A0 x=0.07575 y=-0.030 on=2.9 off=0.5 spot=0.004
 line_sensor r_in  pin=A1 x=0.07575 y=-0.010 on=2.9 off=0.5 spot=0.004
 line_sensor l_in  pin=A2 x=0.07575 y=0.010  on=2.9 off=0.5 spot=0.004
 line_sensor l_out pin=A3 x=0.07575 y=0.030  on=2.9 off=0.5 spot=0.004
-# CAD lens origins are projected onto the floor. The emitters sit at 28.25 mm, receivers at 21.75 mm.
+# Obstacle pairs: LTE-4206 emitter above (28.25 mm), SFH 213 PIN photodiode receiver below (21.75 mm).
+# CAD lens origins (drawn for 3 mm parts) are projected onto the floor; recheck after the 5 mm receiver bore.
 # The shoulder and front opening share y = +/-20 mm. Both optical axes face straight ahead.
-# Range and field of view below are optical model inputs.
+# Range is the LM393 threshold to be set on the bench (6-8 cm on a cone). The 20 deg field matches
+# the SFH 213 (about +/-10 deg half sensitivity) and the LTE-4206 (20 deg). Geometry only: no optical model.
 # LM393 open-collector outputs with 3.3 V pull-ups read LOW within range.
 ir_proximity front_left  pin=D12 x=0.07825 y=0.020  yaw_deg=0 range=0.08 fov_deg=20 on_level=0
 ir_proximity front_right pin=D11 x=0.07825 y=-0.020 yaw_deg=0 range=0.08 fov_deg=20 on_level=0
