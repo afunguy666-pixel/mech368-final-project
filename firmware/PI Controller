@@ -1,58 +1,39 @@
 
 #include <Arduino.h>
+#include <math.h>
 
-// ==========================================
-// MOTOR PINS (DRV8833)
-// ==========================================
-const int MOTOR_A_IN1 = 5;
-const int MOTOR_A_IN2 = 6;
-const int MOTOR_B_IN1 = 9;
-const int MOTOR_B_IN2 = 10;
+// =====================================
+// 1. DRV8833 MOTOR CONNECTIONS
+// =====================================
 
-// ==========================================
-// ENCODER PINS
-// ==========================================
-const int LEFT_C1 = 2;
-const int RIGHT_C1 = 4;
+// Left motor - Channel A
+const int LEFT_IN1 = 5;
+const int LEFT_IN2 = 6;
 
-// Encoder counts per revolution (x1)
-const float PPR = 700.0f;
+// Right motor - Channel B
+const int RIGHT_IN1 = 9;
+const int RIGHT_IN2 = 10;
 
-// ==========================================
-// PI CONTROLLER SETTINGS
-// ==========================================
-const float TARGET_RPM = 60.0f;
+// Set to -1 only if the physical wheel
+// turns backward during a forward command.
+const int LEFT_FORWARD_SIGN = 1;
+const int RIGHT_FORWARD_SIGN = 1;
 
-const float KP = 0.8f;
-const float KI = 1.5f;
+// =====================================
+// 2. ENCODER CONNECTIONS
+// =====================================
 
-// Separate integrals for each motor
-float leftIntegral = 0.0f;
-float rightIntegral = 0.0f;
+const int LEFT_ENC = 2;
+const int RIGHT_ENC = 4;
 
-// ==========================================
-// TIMING
-// ==========================================
-const unsigned long SAMPLE_MS = 100;
-const unsigned long TEST_MS = 10000;
+// x1 counts per gearbox output revolution.
+// Recalibrate the replacement left motor later.
+const float LEFT_PPR = 700.0f;
+const float RIGHT_PPR = 700.0f;
 
-unsigned long startTime = 0;
-unsigned long lastSample = 0;
-
-bool finished = false;
-
-// ==========================================
-// ENCODER VARIABLES
-// ==========================================
 volatile long leftCount = 0;
 volatile long rightCount = 0;
 
-long previousLeft = 0;
-long previousRight = 0;
-
-// ==========================================
-// INTERRUPT FUNCTIONS
-// ==========================================
 void countLeft() {
   leftCount++;
 }
@@ -61,124 +42,345 @@ void countRight() {
   rightCount++;
 }
 
-// ==========================================
-// STOP MOTORS
-// ==========================================
-void stopMotors() {
-  analogWrite(MOTOR_A_IN1, 0);
-  analogWrite(MOTOR_B_IN1, 0);
+// =====================================
+// 3. PI CONTROLLER SETTINGS
+// =====================================
 
-  digitalWrite(MOTOR_A_IN2, LOW);
-  digitalWrite(MOTOR_B_IN2, LOW);
+const float KP = 0.8f;
+const float KI = 1.5f;
+
+// Corrects differences between wheel speeds
+const float K_SYNC = 1.0f;
+
+// Conservative PWM limit for testing
+const int MAX_PWM = 210;
+
+// Starting PWM for reliable motion
+const int START_PWM = 150;
+
+float leftIntegral = 0.0f;
+float rightIntegral = 0.0f;
+
+// =====================================
+// 4. TIMING AND SAFETY
+// =====================================
+
+const unsigned long SAMPLE_MS = 100;
+const unsigned long REST_MS = 1000;
+
+unsigned long runStart = 0;
+unsigned long runDuration = 0;
+unsigned long lastSample = 0;
+unsigned long lastStop = 0;
+
+long previousLeft = 0;
+long previousRight = 0;
+
+float leftTargetRPM = 0.0f;
+float rightTargetRPM = 0.0f;
+
+bool running = false;
+int stallSamples = 0;
+
+// =====================================
+// 5. MOTOR CONTROL FUNCTIONS
+// =====================================
+
+void driveMotor(int in1, int in2,
+                int signedPWM) {
+
+  int pwm = constrain(abs(signedPWM),
+                      0, MAX_PWM);
+
+  if (signedPWM > 0 && pwm > 0) {
+
+    digitalWrite(in2, LOW);
+    analogWrite(in1, pwm);
+
+  } else if (signedPWM < 0 && pwm > 0) {
+
+    digitalWrite(in1, LOW);
+    analogWrite(in2, pwm);
+
+  } else {
+
+    analogWrite(in1, 0);
+    analogWrite(in2, 0);
+  }
 }
 
-// ==========================================
-// PI CONTROLLER
-// ==========================================
-int updateMotorPWM(float measuredRPM,
-                   float dt,
-                   float &integralTerm,
-                   float feedforward) {
+// DRV8833 active braking: IN1 = IN2 = HIGH
+void stopMotors() {
 
-  float error = TARGET_RPM - measuredRPM;
+  analogWrite(LEFT_IN1, 0);
+  analogWrite(LEFT_IN2, 0);
+  analogWrite(RIGHT_IN1, 0);
+  analogWrite(RIGHT_IN2, 0);
 
+  digitalWrite(LEFT_IN1, HIGH);
+  digitalWrite(LEFT_IN2, HIGH);
 
+  digitalWrite(RIGHT_IN1, HIGH);
+  digitalWrite(RIGHT_IN2, HIGH);
+}
 
-  // Integral term
-  float candidateI =
-      integralTerm + KI * error * dt;
+void stopDrive(const char* reason) {
 
-  candidateI = constrain(candidateI,
-                         -80.0f, 80.0f);
+  stopMotors();
 
-  // Check output saturation
-  float candidateOutput =
-      feedforward + KP * error + candidateI;
+  running = false;
 
-  // Anti-windup
-  if (!((candidateOutput > 255 && error > 0) ||
-        (candidateOutput < 0 && error < 0))) {
-    integralTerm = candidateI;
+  leftTargetRPM = 0.0f;
+  rightTargetRPM = 0.0f;
+
+  leftIntegral = 0.0f;
+  rightIntegral = 0.0f;
+
+  stallSamples = 0;
+  lastStop = millis();
+
+  Serial.print("# STOPPED: ");
+  Serial.println(reason);
+}
+
+// =====================================
+// 6. PI SPEED CONTROLLER
+// =====================================
+
+float updatePI(float targetRPM,
+               float measuredRPM,
+               float dt,
+               float &integral) {
+
+  float desiredSpeed = fabsf(targetRPM);
+
+  if (desiredSpeed < 0.1f) {
+    integral = 0;
+    return 0;
   }
 
-  // Final PWM calculation
-  float output =
-      feedforward + KP * error + integralTerm;
+  // Speed error
+  float error = desiredSpeed - measuredRPM;
 
-  int pwm = constrain((int)(output + 0.5f),
-                      0, 255);
+  // Approximate feedforward PWM:
+  // 60 RPM -> PWM 150
+  // 45 RPM -> PWM 142.5
+  float feedforward =
+    120.0f + 0.5f * desiredSpeed;
 
-  return pwm;
+  // Candidate integral term
+  float candidateI =
+    integral + KI * error * dt;
+
+  candidateI = constrain(candidateI,
+                         -60.0f, 60.0f);
+
+  float candidateOutput =
+    feedforward + KP * error + candidateI;
+
+  // Integral anti-windup
+  bool saturatingHigh =
+    candidateOutput > MAX_PWM && error > 0;
+
+  bool saturatingLow =
+    candidateOutput < 0 && error < 0;
+
+  if (!saturatingHigh && !saturatingLow) {
+    integral = candidateI;
+  }
+
+  return feedforward
+       + KP * error
+       + integral;
 }
 
-// ==========================================
-// SETUP
-// ==========================================
+// =====================================
+// 7. START A MOVEMENT
+// =====================================
+
+void startDrive(float leftRPM,
+                float rightRPM,
+                unsigned long duration) {
+
+  if (running) {
+    Serial.println("# Already moving.");
+    return;
+  }
+
+  if (millis() - lastStop < REST_MS) {
+    Serial.println("# Wait 1 second.");
+    return;
+  }
+
+  leftTargetRPM = leftRPM;
+  rightTargetRPM = rightRPM;
+
+  leftIntegral = 0.0f;
+  rightIntegral = 0.0f;
+
+  stallSamples = 0;
+
+  // Record encoder starting positions
+  noInterrupts();
+  previousLeft = leftCount;
+  previousRight = rightCount;
+  interrupts();
+
+  runStart = millis();
+  lastSample = runStart;
+  runDuration = duration;
+
+  running = true;
+
+  Serial.println();
+  Serial.println("# DRIVE START");
+
+  Serial.print("# Target left RPM: ");
+  Serial.println(leftTargetRPM);
+
+  Serial.print("# Target right RPM: ");
+  Serial.println(rightTargetRPM);
+
+  Serial.println(
+    "time_ms,left_rpm,right_rpm,left_pwm,right_pwm"
+  );
+
+  // Start both commanded wheels immediately
+  // at PWM 150 to overcome starting friction.
+  int leftStart =
+    (leftRPM > 0) ? START_PWM :
+    (leftRPM < 0) ? -START_PWM : 0;
+
+  int rightStart =
+    (rightRPM > 0) ? START_PWM :
+    (rightRPM < 0) ? -START_PWM : 0;
+
+  driveMotor(
+    LEFT_IN1,
+    LEFT_IN2,
+    leftStart * LEFT_FORWARD_SIGN
+  );
+
+  driveMotor(
+    RIGHT_IN1,
+    RIGHT_IN2,
+    rightStart * RIGHT_FORWARD_SIGN
+  );
+}
+
+// =====================================
+// 8. SERIAL COMMANDS
+// =====================================
+
+void readCommands() {
+
+  while (Serial.available() > 0) {
+
+    char cmd = Serial.read();
+
+    if (cmd == 's' || cmd == 'S') {
+
+      stopDrive("MANUAL STOP");
+
+    } else if (cmd == 'f' || cmd == 'F') {
+
+      // Forward - equal wheel speeds
+      startDrive(60, 60, 1200);
+
+    } else if (cmd == 'b' || cmd == 'B') {
+
+      // Backward
+      startDrive(-45, -45, 800);
+
+    } else if (cmd == 'l' || cmd == 'L') {
+
+      // Rotate left in place
+      startDrive(-45, 45, 600);
+
+    } else if (cmd == 'r' || cmd == 'R') {
+
+      // Rotate right in place
+      startDrive(45, -45, 600);
+    }
+  }
+}
+
+// =====================================
+// 9. SETUP
+// =====================================
+
 void setup() {
 
   Serial.begin(115200);
 
-  pinMode(MOTOR_A_IN1, OUTPUT);
-  pinMode(MOTOR_A_IN2, OUTPUT);
-  pinMode(MOTOR_B_IN1, OUTPUT);
-  pinMode(MOTOR_B_IN2, OUTPUT);
+  pinMode(LEFT_IN1, OUTPUT);
+  pinMode(LEFT_IN2, OUTPUT);
+
+  pinMode(RIGHT_IN1, OUTPUT);
+  pinMode(RIGHT_IN2, OUTPUT);
 
   analogWriteResolution(8);
 
   stopMotors();
 
-  // Encoder setup
-  pinMode(LEFT_C1, INPUT);
-  pinMode(RIGHT_C1, INPUT);
+  pinMode(LEFT_ENC, INPUT);
+  pinMode(RIGHT_ENC, INPUT);
 
   attachInterrupt(
-    digitalPinToInterrupt(LEFT_C1),
+    digitalPinToInterrupt(LEFT_ENC),
     countLeft,
     RISING
   );
 
   attachInterrupt(
-    digitalPinToInterrupt(RIGHT_C1),
+    digitalPinToInterrupt(RIGHT_ENC),
     countRight,
     RISING
   );
 
-  startTime = millis();
-  lastSample = startTime;
+  lastStop = millis() - REST_MS;
 
-  Serial.println(
-    "time_s,left_rpm,right_rpm,left_pwm,right_pwm"
-  );
+  Serial.println("Robot ready!");
+
+  Serial.println("f = forward");
+  Serial.println("b = backward");
+  Serial.println("l = rotate left");
+  Serial.println("r = rotate right");
+  Serial.println("s = stop");
 }
 
-// ==========================================
-// MAIN LOOP
-// ==========================================
+// =====================================
+// 10. MAIN LOOP
+// =====================================
+
 void loop() {
 
-  if (finished) return;
+  readCommands();
+
+  if (!running) return;
 
   unsigned long now = millis();
 
-  // Stop after 10 seconds
-  if (now - startTime >= TEST_MS) {
-
-    stopMotors();
-    finished = true;
-
-    Serial.println("Motor test complete.");
+  // Automatically end each command
+  if (now - runStart >= runDuration) {
+    stopDrive("TIME LIMIT");
     return;
   }
 
-  // Update every 100 ms
+  // PI update every 100 ms
   if (now - lastSample < SAMPLE_MS) {
     return;
   }
 
-  float dt = (now - lastSample) / 1000.0f;
+  float dt =
+    (now - lastSample) / 1000.0f;
+
   lastSample = now;
 
-  // Read encoder counts
+  // =====================================
+  // 11. READ ENCODER COUNTS
+  // =====================================
+
   noInterrupts();
 
   long currentLeft = leftCount;
@@ -187,57 +389,144 @@ void loop() {
   interrupts();
 
   long deltaLeft =
-      currentLeft - previousLeft;
+    currentLeft - previousLeft;
 
   long deltaRight =
-      currentRight - previousRight;
+    currentRight - previousRight;
 
   previousLeft = currentLeft;
   previousRight = currentRight;
 
-  // Calculate RPM
+  // =====================================
+  // 12. CALCULATE ACTUAL RPM
+  // =====================================
+
+  // x1 counting gives speed magnitude,
+  // not signed rotation direction.
   float leftRPM =
-      deltaLeft * 60.0f / (PPR * dt);
+    deltaLeft * 60.0f / (LEFT_PPR * dt);
 
   float rightRPM =
-      deltaRight * 60.0f / (PPR * dt);
+    deltaRight * 60.0f / (RIGHT_PPR * dt);
 
-  // PI controller for left motor
-  int leftPWM = updateMotorPWM(
+  // =====================================
+  // 13. STALL PROTECTION
+  // =====================================
+
+  if (now - runStart >= 300) {
+
+    bool leftStalled =
+      fabsf(leftTargetRPM) > 0 &&
+      leftRPM < 5.0f;
+
+    bool rightStalled =
+      fabsf(rightTargetRPM) > 0 &&
+      rightRPM < 5.0f;
+
+    if (leftStalled || rightStalled) {
+      stallSamples++;
+    } else {
+      stallSamples = 0;
+    }
+
+    // Stop if either wheel has remained
+    // stalled for two measurement intervals.
+    if (stallSamples >= 2) {
+
+      Serial.print("# Stall: L=");
+      Serial.print(leftRPM, 2);
+
+      Serial.print(" R=");
+      Serial.println(rightRPM, 2);
+
+      stopDrive("WHEEL STALL");
+      return;
+    }
+  }
+
+  // =====================================
+  // 14. INDEPENDENT PI CONTROL
+  // =====================================
+
+  float leftPWM = updatePI(
+    leftTargetRPM,
     leftRPM,
     dt,
-    leftIntegral, 105.0f
+    leftIntegral
   );
 
-  // PI controller for right motor
-  int rightPWM = updateMotorPWM(
+  float rightPWM = updatePI(
+    rightTargetRPM,
     rightRPM,
     dt,
-    rightIntegral, 94.0f
+    rightIntegral
   );
 
-  // Drive both motors
-  digitalWrite(MOTOR_A_IN2, LOW);
-  digitalWrite(MOTOR_B_IN2, LOW);
+  // =====================================
+  // 15. WHEEL SYNCHRONIZATION
+  // =====================================
 
-  analogWrite(MOTOR_A_IN1, leftPWM);
-  analogWrite(MOTOR_B_IN1, rightPWM);
+  // Positive when right wheel is faster
+  float difference = rightRPM - leftRPM;
 
-  // Print results
-  Serial.print(
-    (now - startTime) / 1000.0f, 2
+  float correction =
+    constrain(K_SYNC * difference,
+              -25.0f, 25.0f);
+
+  // Increase slower wheel's PWM and
+  // decrease faster wheel's PWM
+  leftPWM += correction;
+  rightPWM -= correction;
+
+  int leftCommand =
+    constrain((int)(leftPWM + 0.5f),
+              0, MAX_PWM);
+
+  int rightCommand =
+    constrain((int)(rightPWM + 0.5f),
+              0, MAX_PWM);
+
+  // =====================================
+  // 16. MOTOR DIRECTIONS
+  // =====================================
+
+  int leftDirection =
+    (leftTargetRPM > 0) ? 1 :
+    (leftTargetRPM < 0) ? -1 : 0;
+
+  int rightDirection =
+    (rightTargetRPM > 0) ? 1 :
+    (rightTargetRPM < 0) ? -1 : 0;
+
+  driveMotor(
+    LEFT_IN1,
+    LEFT_IN2,
+    leftCommand * leftDirection
+      * LEFT_FORWARD_SIGN
   );
 
+  driveMotor(
+    RIGHT_IN1,
+    RIGHT_IN2,
+    rightCommand * rightDirection
+      * RIGHT_FORWARD_SIGN
+  );
+
+  // =====================================
+  // 17. PRINT DATA
+  // =====================================
+
+  Serial.print(now - runStart);
   Serial.print(",");
+
   Serial.print(leftRPM, 2);
-
   Serial.print(",");
+
   Serial.print(rightRPM, 2);
-
   Serial.print(",");
-  Serial.print(leftPWM);
 
+  Serial.print(leftCommand);
   Serial.print(",");
-  Serial.println(rightPWM);
+
+  Serial.println(rightCommand);
 }
-
